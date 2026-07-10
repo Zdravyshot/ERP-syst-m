@@ -46,6 +46,6 @@ Vlastné adresáre: `src/app/(app)/{klienti,objednavky,financie,konkurencia}/`, 
 
 - E-mail parsing do inboxu (IMAP/forwarding → `POST /api/inbox`)
 - SuperFaktúra API sync (rovnaký `ExternalInvoiceInput` mapper ako CSV)
-- Napojenie modelu na sledovanie konkurencie (`GET /api/konkurencia`)
+- ~~Napojenie modelu na sledovanie konkurencie (`GET /api/konkurencia`)~~ — hotové (FULL SINTEL, PR feat/konkurencia-sintel)
 - Prechod SQLite → Postgres (zmena providera + DATABASE_URL + nové migrácie)
 - XLSX export, automatické generovanie objednávok z predplatného (cron)

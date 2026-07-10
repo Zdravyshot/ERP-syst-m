@@ -1,12 +1,33 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { fetchSintelExport, sintelConfigured } from "@/app/(app)/konkurencia/sintel";
 
 /**
- * Stub pre budúce napojenie externého modelu na sledovanie konkurencie.
- * Kontrakt sa dohodne pri integrácii — zatiaľ vracia not_implemented.
+ * Napojenie externého modelu na sledovanie konkurencie (FULL SINTEL).
+ * Stránka /konkurencia číta SINTEL priamo v server componente; tento
+ * endpoint sprístupňuje tie isté dáta ďalším externým systémom.
+ * Zabezpečené hlavičkou x-api-key (INBOX_API_KEY — rovnaký vzor ako /api/inbox).
+ *
+ * GET /api/konkurencia  →  export FULL SINTEL (konkurenti, top príspevky, rady)
  */
-export async function GET() {
-  return NextResponse.json({
-    status: "not_implemented",
-    message: "Model na sledovanie konkurencie zatiaľ nie je pripojený.",
-  });
+export async function GET(request: NextRequest) {
+  const apiKey = request.headers.get("x-api-key");
+  if (!apiKey || apiKey !== process.env.INBOX_API_KEY) {
+    return NextResponse.json({ error: "Neplatný API kľúč" }, { status: 401 });
+  }
+
+  if (!sintelConfigured()) {
+    return NextResponse.json(
+      { status: "not_configured", message: "Nastav SINTEL_API_URL a SINTEL_API_KEY v .env." },
+      { status: 503 },
+    );
+  }
+
+  const data = await fetchSintelExport();
+  if (!data) {
+    return NextResponse.json(
+      { status: "upstream_error", message: "Dáta z FULL SINTEL sa nepodarilo načítať." },
+      { status: 502 },
+    );
+  }
+  return NextResponse.json(data);
 }
