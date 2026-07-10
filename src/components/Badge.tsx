@@ -1,21 +1,24 @@
 // Farebné odznaky pre stavy a typy — jednotný vzhľad naprieč modulmi.
 
+// Paleta podľa docs/DESIGN_BRIEF.md: zelená = pozitívne, žltá = rozpracované,
+// červená = problém, sivá = neutrálne (stone tóny z dizajnu).
 const COLOR_CLASSES: Record<string, string> = {
-  blue: "bg-blue-100 text-blue-800",
-  amber: "bg-amber-100 text-amber-800",
-  purple: "bg-purple-100 text-purple-800",
-  emerald: "bg-emerald-100 text-emerald-800",
-  red: "bg-red-100 text-red-700",
-  gray: "bg-gray-100 text-gray-600",
-  indigo: "bg-indigo-100 text-indigo-800",
-  teal: "bg-teal-100 text-teal-800",
+  blue: "bg-[#FFF6D2] text-[#8A6200]",
+  amber: "bg-[#FFF6D2] text-[#8A6200]",
+  purple: "bg-[#FFF6D2] text-[#8A6200]",
+  yellow: "bg-[#FFF6D2] text-[#8A6200]",
+  emerald: "bg-[#E7F8E3] text-[#1F7A0F]",
+  red: "bg-[#FEE2E2] text-[#B91C1C]",
+  gray: "bg-stone-100 text-stone-600",
+  indigo: "bg-stone-950 text-white",
+  teal: "bg-stone-100 text-stone-600",
 };
 
 export type BadgeColor = keyof typeof COLOR_CLASSES;
 
 export function Badge({ color = "gray", children }: { color?: BadgeColor; children: React.ReactNode }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${COLOR_CLASSES[color] ?? COLOR_CLASSES.gray}`}>
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-[9px] py-0.5 text-[11px] font-semibold ${COLOR_CLASSES[color] ?? COLOR_CLASSES.gray}`}>
       {children}
     </span>
   );

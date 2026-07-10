@@ -1,34 +1,30 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
+import { Badge } from "@/components/Badge";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
 import { CompleteBatchButton } from "./CompleteBatchButton";
 import { cancelBatch } from "./_actions";
+import { btnPrimary, btnSecondary, btnSmall, card, table, thead, tr } from "@/components/ui";
 
-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  PLANNED: { label: "Naplánovaná", className: "bg-amber-100 text-amber-700" },
-  DONE: { label: "Hotová", className: "bg-emerald-100 text-emerald-700" },
-  CANCELLED: { label: "Zrušená", className: "bg-gray-100 text-gray-500" },
+const STATUS_BADGES: Record<string, { label: string; color: "yellow" | "emerald" | "gray" }> = {
+  PLANNED: { label: "Naplánovaná", color: "yellow" },
+  DONE: { label: "Hotová", color: "emerald" },
+  CANCELLED: { label: "Zrušená", color: "gray" },
 };
 
 function ExpiryBadge({ expiryDate, status }: { expiryDate: Date; status: string }) {
-  if (status !== "DONE") return <span className="text-gray-500">{formatDate(expiryDate)}</span>;
+  if (status !== "DONE") return <span className="text-stone-500">{formatDate(expiryDate)}</span>;
   const daysLeft = Math.ceil((expiryDate.getTime() - Date.now()) / (24 * 3600 * 1000));
-  if (daysLeft < 0) {
-    return (
-      <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
-        Exspirovaná {formatDate(expiryDate)}
-      </span>
-    );
-  }
+  if (daysLeft < 0) return <Badge color="red">Exspirovaná {formatDate(expiryDate)}</Badge>;
   if (daysLeft <= 7) {
     return (
-      <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+      <Badge color="yellow">
         {formatDate(expiryDate)} (o {daysLeft} d.)
-      </span>
+      </Badge>
     );
   }
-  return <span className="text-gray-500">{formatDate(expiryDate)}</span>;
+  return <span className="text-stone-500">{formatDate(expiryDate)}</span>;
 }
 
 export default async function VyrobaPage() {
@@ -41,74 +37,65 @@ export default async function VyrobaPage() {
   return (
     <>
       <PageHeader title="Výroba" subtitle="Výrobné šarže a exspirácie">
-        <Link
-          href="/vyroba/receptury"
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-        >
+        <Link href="/vyroba/receptury" className={btnSecondary}>
           Receptúry
         </Link>
-        <Link
-          href="/vyroba/nova"
-          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
-        >
+        <Link href="/vyroba/nova" className={btnPrimary}>
           + Nová šarža
         </Link>
       </PageHeader>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-        <table className="w-full text-sm">
+      <div className={`${card} overflow-x-auto`}>
+        <table className={table}>
           <thead>
-            <tr className="text-left text-xs uppercase tracking-wide text-gray-500">
-              <th className="px-5 py-3 font-medium">Šarža</th>
-              <th className="px-5 py-3 font-medium">Produkt</th>
-              <th className="px-5 py-3 text-right font-medium">Kusov</th>
-              <th className="px-5 py-3 font-medium">Výroba</th>
-              <th className="px-5 py-3 font-medium">Exspirácia</th>
-              <th className="px-5 py-3 font-medium">Stav</th>
-              <th className="px-5 py-3 font-medium">Akcie</th>
+            <tr className={thead}>
+              <th className="px-[18px] py-[11px] font-medium">Šarža</th>
+              <th className="px-[18px] py-[11px] font-medium">Produkt</th>
+              <th className="px-[18px] py-[11px] text-right font-medium">Kusov</th>
+              <th className="px-[18px] py-[11px] font-medium">Výroba</th>
+              <th className="px-[18px] py-[11px] font-medium">Exspirácia</th>
+              <th className="px-[18px] py-[11px] font-medium">Stav</th>
+              <th className="px-[18px] py-[11px] font-medium">Akcie</th>
             </tr>
           </thead>
           <tbody>
             {batches.map((batch) => {
-              const status = STATUS_LABELS[batch.status] ?? STATUS_LABELS.PLANNED;
+              const status = STATUS_BADGES[batch.status] ?? STATUS_BADGES.PLANNED;
               return (
-                <tr key={batch.id} className="border-t border-gray-100">
-                  <td className="px-5 py-3 font-medium text-gray-900">{batch.batchNumber}</td>
-                  <td className="px-5 py-3 text-gray-700">{batch.product.name}</td>
-                  <td className="px-5 py-3 text-right tabular-nums">{batch.producedQty}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-gray-500">
+                <tr key={batch.id} className={tr}>
+                  <td className="px-[18px] py-[11px] font-medium text-stone-950">{batch.batchNumber}</td>
+                  <td className="px-[18px] py-[11px] text-stone-700">{batch.product.name}</td>
+                  <td className="px-[18px] py-[11px] text-right tabular-nums">{batch.producedQty}</td>
+                  <td className="whitespace-nowrap px-[18px] py-[11px] text-stone-500">
                     {formatDate(batch.productionDate)}
                   </td>
-                  <td className="whitespace-nowrap px-5 py-3">
+                  <td className="whitespace-nowrap px-[18px] py-[11px]">
                     <ExpiryBadge expiryDate={batch.expiryDate} status={batch.status} />
                   </td>
-                  <td className="px-5 py-3">
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.className}`}>
-                      {status.label}
-                    </span>
+                  <td className="px-[18px] py-[11px]">
+                    <Badge color={status.color}>{status.label}</Badge>
                   </td>
-                  <td className="px-5 py-3">
-                    {batch.status === "PLANNED" && (
+                  <td className="px-[18px] py-[11px]">
+                    {batch.status === "PLANNED" ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <CompleteBatchButton batchId={batch.id} />
                         <form action={cancelBatch} className="inline">
                           <input type="hidden" name="batchId" value={batch.id} />
-                          <button
-                            type="submit"
-                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
-                          >
+                          <button type="submit" className={btnSmall}>
                             Zrušiť
                           </button>
                         </form>
                       </div>
+                    ) : (
+                      <span className="text-stone-300">—</span>
                     )}
                   </td>
                 </tr>
               );
             })}
             {batches.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-gray-400">
+              <tr className={tr}>
+                <td colSpan={7} className="px-[18px] py-8 text-center text-stone-400">
                   Zatiaľ žiadne šarže — vytvorte prvú tlačidlom „+ Nová šarža“
                 </td>
               </tr>

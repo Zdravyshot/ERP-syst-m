@@ -3,9 +3,7 @@
 import { useActionState } from "react";
 import { upsertPlan, type PlanFormState } from "./_actions";
 import { MONTH_NAMES_SK } from "@/lib/format";
-
-const inputClass =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600";
+import { errorBox, input, labelSmall } from "@/components/ui";
 
 export function PlanForm({ defaultYear, defaultMonth }: { defaultYear: number; defaultMonth: number }) {
   const [state, formAction, pending] = useActionState<PlanFormState, FormData>(upsertPlan, {});
@@ -13,15 +11,15 @@ export function PlanForm({ defaultYear, defaultMonth }: { defaultYear: number; d
   return (
     <form
       action={formAction}
-      className="mb-6 grid grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-3 lg:grid-cols-6"
+      className="mb-6 grid grid-cols-2 gap-3 rounded-[14px] border border-stone-200 bg-white p-4 sm:grid-cols-3 lg:grid-cols-6"
     >
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">Rok</label>
-        <input name="year" type="number" defaultValue={defaultYear} required className={inputClass} />
+        <label className={labelSmall}>Rok</label>
+        <input name="year" type="number" defaultValue={defaultYear} required className={input} />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">Mesiac</label>
-        <select name="month" defaultValue={defaultMonth} required className={inputClass}>
+        <label className={labelSmall}>Mesiac</label>
+        <select name="month" defaultValue={defaultMonth} required className={input}>
           {MONTH_NAMES_SK.map((name, i) => (
             <option key={name} value={i + 1}>
               {name}
@@ -30,29 +28,27 @@ export function PlanForm({ defaultYear, defaultMonth }: { defaultYear: number; d
         </select>
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">Cieľ tržieb €</label>
-        <input name="targetRevenue" placeholder="napr. 5000" className={inputClass} />
+        <label className={labelSmall}>Cieľ tržieb €</label>
+        <input name="targetRevenue" placeholder="napr. 5000" className={input} />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">Cieľ výroby (ks)</label>
-        <input name="targetProductionUnits" type="number" min="0" placeholder="napr. 2000" className={inputClass} />
+        <label className={labelSmall}>Cieľ výroby (ks)</label>
+        <input name="targetProductionUnits" type="number" min="0" placeholder="napr. 2000" className={input} />
       </div>
       <div className="col-span-2 sm:col-span-1">
-        <label className="mb-1 block text-xs font-medium text-gray-600">Poznámka</label>
-        <input name="note" className={inputClass} />
+        <label className={labelSmall}>Poznámka</label>
+        <input name="note" className={input} />
       </div>
       <div className="flex items-end">
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50"
+          className="w-full rounded-[10px] bg-brand px-4 py-[9px] text-[13.5px] font-semibold text-stone-950 transition hover:bg-brand-dark disabled:opacity-50"
         >
           {pending ? "Ukladám…" : "Uložiť plán"}
         </button>
       </div>
-      {state.error && (
-        <p className="col-span-full rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p>
-      )}
+      {state.error && <p className={`${errorBox} col-span-full`}>{state.error}</p>}
     </form>
   );
 }

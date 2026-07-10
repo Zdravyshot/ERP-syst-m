@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { createBatch, type BatchFormState } from "./_actions";
+import { btnPrimary, errorBox, input, label } from "@/components/ui";
 
 interface ProductOption {
   id: string;
@@ -10,20 +11,17 @@ interface ProductOption {
   hasRecipe: boolean;
 }
 
-const inputClass =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600";
-
 export function BatchForm({ products, today }: { products: ProductOption[]; today: string }) {
   const [state, formAction, pending] = useActionState<BatchFormState, FormData>(createBatch, {});
 
   return (
     <form
       action={formAction}
-      className="max-w-2xl space-y-4 rounded-xl border border-gray-200 bg-white p-6"
+      className="max-w-2xl space-y-4 rounded-[14px] border border-stone-200 bg-white p-6"
     >
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">Produkt</label>
-        <select name="productId" required className={inputClass} defaultValue="">
+        <label className={label}>Produkt</label>
+        <select name="productId" required className={input} defaultValue="">
           <option value="" disabled>
             — vyberte produkt —
           </option>
@@ -34,42 +32,36 @@ export function BatchForm({ products, today }: { products: ProductOption[]; toda
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-stone-500">
           Produkt bez receptúry sa nedá dokončiť — receptúru vytvoríte v sekcii Receptúry.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Počet kusov</label>
-          <input name="producedQty" type="number" min="1" required placeholder="100" className={inputClass} />
+          <label className={label}>Počet kusov</label>
+          <input name="producedQty" type="number" min="1" required placeholder="100" className={input} />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Dátum výroby</label>
-          <input name="productionDate" type="date" defaultValue={today} required className={inputClass} />
+          <label className={label}>Dátum výroby</label>
+          <input name="productionDate" type="date" defaultValue={today} required className={input} />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Exspirácia <span className="font-normal text-gray-400">(inak auto)</span>
+          <label className={label}>
+            Exspirácia <span className="font-normal text-stone-400">(inak auto)</span>
           </label>
-          <input name="expiryDate" type="date" className={inputClass} />
+          <input name="expiryDate" type="date" className={input} />
         </div>
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">Poznámka</label>
-        <input name="note" className={inputClass} />
+        <label className={label}>Poznámka</label>
+        <input name="note" className={input} />
       </div>
 
-      {state.error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p>
-      )}
+      {state.error && <p className={errorBox}>{state.error}</p>}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50"
-      >
+      <button type="submit" disabled={pending} className={btnPrimary}>
         {pending ? "Ukladám…" : "Vytvoriť šaržu"}
       </button>
     </form>

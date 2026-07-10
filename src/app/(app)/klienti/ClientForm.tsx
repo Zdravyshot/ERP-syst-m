@@ -33,8 +33,8 @@ const EMPTY: ClientFormValues = {
 };
 
 const inputClass =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600";
-const labelClass = "mb-1 block text-sm font-medium text-gray-700";
+  "w-full rounded-[10px] border border-stone-300 px-3 py-2 text-sm focus:border-stone-950 focus:outline-none focus:ring-[3px] focus:ring-brand/35";
+const labelClass = "mb-1 block text-sm font-medium text-stone-700";
 
 export function ClientForm({
   action,
@@ -52,7 +52,7 @@ export function ClientForm({
   const [type, setType] = useState(values.type);
 
   return (
-    <form action={formAction} className="max-w-2xl space-y-5 rounded-xl border border-gray-200 bg-white p-6">
+    <form action={formAction} className="max-w-2xl space-y-5 rounded-[14px] border border-stone-200 bg-white p-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <label htmlFor="type" className={labelClass}>Typ klienta</label>
@@ -116,20 +116,20 @@ export function ClientForm({
       </div>
 
       {state.error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p>
+        <p className="rounded-[10px] bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p>
       )}
 
       <div className="flex gap-3">
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50"
+          className="rounded-[10px] bg-brand px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-brand-dark disabled:opacity-50"
         >
           {pending ? "Ukladám…" : submitLabel}
         </button>
         <Link
           href={cancelHref}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+          className="rounded-[10px] border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
         >
           Zrušiť
         </Link>

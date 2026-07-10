@@ -45,7 +45,7 @@ export default async function NovaObjednavkaPage({
     <>
       <PageHeader title="Nová objednávka" subtitle="Vytvorenie objednávky s položkami" />
       {inboxInfo && (
-        <div className="mb-4 max-w-3xl rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        <div className="mb-4 max-w-3xl rounded-[10px] bg-blue-50 px-4 py-3 text-sm text-blue-900">
           Vytvárate objednávku zo správy v inboxe: <strong>{inboxInfo.subject ?? "(bez predmetu)"}</strong>
           {inboxInfo.fromEmail && <> od <strong>{inboxInfo.fromEmail}</strong></>}. Po uložení sa správa označí ako spracovaná.
         </div>
