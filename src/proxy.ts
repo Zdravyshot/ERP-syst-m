@@ -3,6 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 // Rýchla kontrola prítomnosti session cookie — skutočné overenie robí
 // requireUser() v (app)/layout.tsx a v server actions.
 export function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname === "/api/health") {
+    return NextResponse.next();
+  }
   const hasSession = request.cookies.has("zs_session");
   if (!hasSession) {
     const loginUrl = new URL("/login", request.url);
