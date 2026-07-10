@@ -28,7 +28,7 @@ export default async function ObjednavkyPage({
       <PageHeader title="Objednávky" subtitle="Manuálne, web, e-mail a predplatné">
         <Link
           href="/objednavky/inbox"
-          className="relative rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+          className="relative rounded-[10px] border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
         >
           📥 Inbox
           {newInboxCount > 0 && (
@@ -39,13 +39,13 @@ export default async function ObjednavkyPage({
         </Link>
         <Link
           href="/objednavky/predplatne"
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+          className="rounded-[10px] border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
         >
           🔁 Predplatné
         </Link>
         <Link
           href="/objednavky/nova"
-          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
+          className="rounded-[10px] bg-brand px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-brand-dark"
         >
           + Nová objednávka
         </Link>
@@ -55,7 +55,7 @@ export default async function ObjednavkyPage({
         <Link
           href="/objednavky"
           className={`rounded-full px-3 py-1 text-sm transition ${
-            !statusFilter ? "bg-emerald-700 font-medium text-white" : "bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50"
+            !statusFilter ? "bg-stone-950 font-medium text-white" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50"
           }`}
         >
           Všetky
@@ -65,7 +65,7 @@ export default async function ObjednavkyPage({
             key={value}
             href={`/objednavky?stav=${value}`}
             className={`rounded-full px-3 py-1 text-sm transition ${
-              statusFilter === value ? "bg-emerald-700 font-medium text-white" : "bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50"
+              statusFilter === value ? "bg-stone-950 font-medium text-white" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50"
             }`}
           >
             {label}
@@ -73,10 +73,10 @@ export default async function ObjednavkyPage({
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+      <div className="overflow-x-auto rounded-[14px] border border-stone-200 bg-white">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr className="border-b border-stone-200 bg-stone-50 text-left text-xs font-semibold uppercase tracking-wide text-stone-500">
               <th className="px-4 py-3">Číslo</th>
               <th className="px-4 py-3">Klient</th>
               <th className="px-4 py-3">Dátum</th>
@@ -91,32 +91,32 @@ export default async function ObjednavkyPage({
           <tbody>
             {orders.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-gray-400">Žiadne objednávky.</td>
+                <td colSpan={9} className="px-4 py-10 text-center text-stone-400">Žiadne objednávky.</td>
               </tr>
             )}
             {orders.map((order) => {
               const totals = computeTotals(order.items);
               return (
-                <tr key={order.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                <tr key={order.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
                   <td className="px-4 py-3">
-                    <Link href={`/objednavky/${order.id}`} className="font-medium text-emerald-800 hover:underline">
+                    <Link href={`/objednavky/${order.id}`} className="font-medium text-stone-950 hover:underline">
                       {order.orderNumber}
                     </Link>
                   </td>
                   <td className="px-4 py-3">
-                    <Link href={`/klienti/${order.clientId}`} className="text-gray-700 hover:underline">
+                    <Link href={`/klienti/${order.clientId}`} className="text-stone-700 hover:underline">
                       {order.client.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{formatDate(order.orderDate)}</td>
-                  <td className="px-4 py-3 text-gray-600">{formatDate(order.deliveryDate)}</td>
-                  <td className="px-4 py-3 text-gray-600">{orderChannelLabels[order.channel] ?? order.channel}</td>
+                  <td className="px-4 py-3 text-stone-600">{formatDate(order.orderDate)}</td>
+                  <td className="px-4 py-3 text-stone-600">{formatDate(order.deliveryDate)}</td>
+                  <td className="px-4 py-3 text-stone-600">{orderChannelLabels[order.channel] ?? order.channel}</td>
                   <td className="px-4 py-3">
                     <Badge color={ORDER_STATUS_COLORS[order.status]}>{orderStatusLabels[order.status] ?? order.status}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-600">{order.items.length}</td>
-                  <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCents(totals.totalGrossCents)}</td>
-                  <td className="px-4 py-3 text-gray-600">{order.invoices.length > 0 ? "✓" : "—"}</td>
+                  <td className="px-4 py-3 text-right text-stone-600">{order.items.length}</td>
+                  <td className="px-4 py-3 text-right font-medium text-stone-900">{formatCents(totals.totalGrossCents)}</td>
+                  <td className="px-4 py-3 text-stone-600">{order.invoices.length > 0 ? "✓" : "—"}</td>
                 </tr>
               );
             })}

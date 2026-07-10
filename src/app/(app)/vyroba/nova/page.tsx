@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { prisma } from "@/lib/prisma";
 import { BatchForm } from "../BatchForm";
+import { btnSecondary } from "@/components/ui";
 
 export default async function NovaSarzaPage() {
   const products = await prisma.product.findMany({
@@ -15,10 +16,7 @@ export default async function NovaSarzaPage() {
   return (
     <>
       <PageHeader title="Nová šarža" subtitle="Naplánovanie výrobnej dávky">
-        <Link
-          href="/vyroba"
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-        >
+        <Link href="/vyroba" className={btnSecondary}>
           ← Späť na výrobu
         </Link>
       </PageHeader>
