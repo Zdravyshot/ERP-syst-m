@@ -8,20 +8,23 @@ import { orderStatusLabels } from "@/lib/zod-schemas";
 
 function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5">
-      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="mt-2 text-2xl font-bold text-gray-900">{value}</div>
-      {hint && <div className="mt-1 text-xs text-gray-400">{hint}</div>}
+    <div className="min-w-0 overflow-hidden rounded-[14px] border border-stone-200 border-t-[3px] border-t-brand bg-white px-5 py-[18px]">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">{label}</div>
+      <div className="mt-2 whitespace-nowrap font-display text-[22px] font-bold text-stone-950">{value}</div>
+      {hint && <div className="mt-1 text-xs text-stone-400">{hint}</div>}
     </div>
   );
 }
 
 function SectionCard({ title, href, children }: { title: string; href: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white">
-      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
-        <span className="text-sm font-semibold text-gray-900">{title}</span>
-        <Link href={href} className="text-xs font-medium text-emerald-700 hover:underline">
+    <div className="min-w-0 overflow-hidden rounded-[14px] border border-stone-200 bg-white">
+      <div className="flex items-center justify-between gap-2.5 border-b border-stone-100 px-[18px] py-[13px]">
+        <span className="min-w-0 text-[13.5px] font-semibold text-stone-950">{title}</span>
+        <Link
+          href={href}
+          className="shrink-0 whitespace-nowrap text-xs font-semibold text-stone-950 transition hover:text-brand-dark"
+        >
           Zobraziť →
         </Link>
       </div>
@@ -65,7 +68,7 @@ export default async function DashboardPage() {
     <>
       <PageHeader title="Prehľad" subtitle="Kľúčové ukazovatele firmy Zdravý shot" />
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="Tržby tento mesiac"
           value={formatCents(actuals.revenueCents)}
@@ -84,54 +87,63 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         <SectionCard title="Nízke zásoby" href="/sklad">
-          <ul className="divide-y divide-gray-100 text-sm">
+          <ul className="text-[13.5px]">
             {[...lowStock.materials, ...lowStock.products].slice(0, 6).map((item) => (
-              <li key={item.id} className="flex justify-between px-5 py-2.5">
-                <span className="text-gray-900">{item.name}</span>
-                <span className="tabular-nums text-red-600">
+              <li
+                key={item.id}
+                className="flex justify-between border-b border-stone-100 px-[18px] py-2.5 last:border-b-0"
+              >
+                <span className="text-stone-950">{item.name}</span>
+                <span className="tabular-nums text-red-500">
                   {formatQty(item.quantity, item.unit)}{" "}
-                  <span className="text-gray-400">/ min {formatQty(item.minStock)}</span>
+                  <span className="text-stone-400">/ min {formatQty(item.minStock)}</span>
                 </span>
               </li>
             ))}
             {lowStockCount === 0 && (
-              <li className="px-5 py-6 text-center text-gray-400">Všetky zásoby sú nad minimom 🎉</li>
+              <li className="px-[18px] py-6 text-center text-stone-400">Všetky zásoby sú nad minimom 🎉</li>
             )}
           </ul>
         </SectionCard>
 
-        <SectionCard title="Blížiace sa exspirácie (7 dní)" href="/vyroba">
-          <ul className="divide-y divide-gray-100 text-sm">
+        <SectionCard title="Blížiace exspirácie (7 dní)" href="/vyroba">
+          <ul className="text-[13.5px]">
             {expiringBatches.map((batch) => (
-              <li key={batch.id} className="flex justify-between px-5 py-2.5">
-                <span className="text-gray-900">
-                  {batch.batchNumber} <span className="text-gray-400">· {batch.product.name}</span>
+              <li
+                key={batch.id}
+                className="flex justify-between border-b border-stone-100 px-[18px] py-2.5 last:border-b-0"
+              >
+                <span className="text-stone-950">
+                  {batch.batchNumber} <span className="text-stone-400">· {batch.product.name}</span>
                 </span>
-                <span className="tabular-nums text-amber-600">{formatDate(batch.expiryDate)}</span>
+                <span className="tabular-nums text-amber-700">{formatDate(batch.expiryDate)}</span>
               </li>
             ))}
             {expiringBatches.length === 0 && (
-              <li className="px-5 py-6 text-center text-gray-400">Žiadne šarže neexspirujú do 7 dní</li>
+              <li className="px-[18px] py-6 text-center text-stone-400">Žiadne šarže neexspirujú do 7 dní</li>
             )}
           </ul>
         </SectionCard>
 
         <SectionCard title="Posledné objednávky" href="/objednavky">
-          <ul className="divide-y divide-gray-100 text-sm">
+          <ul className="text-[13.5px]">
             {recentOrders.map((order) => (
-              <li key={order.id} className="flex items-center justify-between px-5 py-2.5">
-                <span className="text-gray-900">
-                  {order.orderNumber} <span className="text-gray-400">· {order.client.name}</span>
+              <li
+                key={order.id}
+                className="flex items-center justify-between border-b border-stone-100 px-[18px] py-2.5 last:border-b-0"
+              >
+                <span className="text-stone-950">
+                  {order.orderNumber} <span className="text-stone-400">· {order.client.name}</span>
                 </span>
-                <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+                <span className="rounded-full bg-stone-100 px-[9px] py-0.5 text-[11px] font-semibold text-stone-600">
                   {orderStatusLabels[order.status] ?? order.status}
                 </span>
               </li>
             ))}
             {recentOrders.length === 0 && (
-              <li className="px-5 py-6 text-center text-gray-400">Zatiaľ žiadne objednávky</li>
+              <li className="px-[18px] py-6 text-center text-stone-400">Zatiaľ žiadne objednávky</li>
             )}
           </ul>
         </SectionCard>
