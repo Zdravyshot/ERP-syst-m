@@ -6,9 +6,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-stone-50">
       <Sidebar userName={user.name} logoutAction={logout} />
-      <main className="min-w-0 flex-1 px-8 py-6">{children}</main>
+      <main className="min-w-0 flex-1 px-10 py-8">{children}</main>
     </div>
   );
 }
