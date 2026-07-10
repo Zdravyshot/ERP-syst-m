@@ -1,0 +1,315 @@
+// ERP Zdravý shot — dátový model
+// Peniaze: integer centy. Množstvá: Float. Žiadne DB enumy (SQLite → Postgres prenosnosť),
+// povolené hodnoty stráži zod v src/lib/zod-schemas.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth ----------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("user") // "admin" | "user"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ---------- Klienti ----------
+
+model Client {
+  id        String   @id @default(cuid())
+  type      String // "B2B" | "B2C"
+  name      String
+  ico       String? // IČO
+  dic       String? // DIČ
+  icDph     String? // IČ DPH
+  email     String?
+  phone     String?
+  street    String?
+  city      String?
+  zip       String?
+  country   String   @default("SK")
+  note      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders        Order[]
+  invoices      Invoice[]
+  subscriptions Subscription[]
+}
+
+// ---------- Katalóg ----------
+
+model Product {
+  id            String   @id @default(cuid())
+  sku           String   @unique // "ZS-060"
+  name          String // "Zázvorový shot 60ml"
+  volumeMl      Int?
+  unit          String   @default("ks") // "ks" | "kg" | "l" | "g" | "ml"
+  priceB2cCents Int
+  priceB2bCents Int
+  vatRate       Int      @default(20)
+  minStock      Float    @default(0)
+  shelfLifeDays Int      @default(30)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  recipe            Recipe?
+  batches           ProductionBatch[]
+  orderItems        OrderItem[]
+  movements         StockMovement[]
+  subscriptionItems SubscriptionItem[]
+  ekasaSales        EkasaSale[]
+}
+
+model Material {
+  id             String   @id @default(cuid())
+  name           String // "Zázvor čerstvý"
+  unit           String // "kg" | "l" | "ks" | "g" | "ml"
+  minStock       Float    @default(0)
+  lastPriceCents Int      @default(0) // posledná nákupná cena za jednotku
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  recipeItems RecipeItem[]
+  movements   StockMovement[]
+}
+
+// ---------- Výroba ----------
+
+model Recipe {
+  id        String   @id @default(cuid())
+  productId String   @unique // 1 aktívna receptúra na produkt (v1)
+  product   Product  @relation(fields: [productId], references: [id])
+  batchSize Int // počet kusov na štandardnú dávku
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items RecipeItem[]
+}
+
+model RecipeItem {
+  id         String   @id @default(cuid())
+  recipeId   String
+  recipe     Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+  quantity   Float // množstvo suroviny na batchSize kusov
+
+  @@unique([recipeId, materialId])
+}
+
+model ProductionBatch {
+  id             String   @id @default(cuid())
+  batchNumber    String   @unique // "S2026-0042"
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id])
+  producedQty    Int
+  productionDate DateTime
+  expiryDate     DateTime
+  status         String   @default("PLANNED") // "PLANNED" | "DONE" | "CANCELLED"
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  movements StockMovement[]
+}
+
+// ---------- Sklad: pohybový ledger ----------
+// Presne jedno z materialId/productId je vyplnené (stráži app kód).
+// Stav zásob = SUM(quantity) — quantity je signed (+príjem / −výdaj).
+
+model StockMovement {
+  id             String           @id @default(cuid())
+  type           String // "PRIJEM" | "VYDAJ" | "VYROBA" | "SPOTREBA" | "PREDAJ" | "KOREKCIA"
+  materialId     String?
+  material       Material?        @relation(fields: [materialId], references: [id])
+  productId      String?
+  product        Product?         @relation(fields: [productId], references: [id])
+  quantity       Float // signed
+  batchId        String?
+  batch          ProductionBatch? @relation(fields: [batchId], references: [id])
+  orderId        String?
+  order          Order?           @relation(fields: [orderId], references: [id])
+  unitPriceCents Int? // nákladová cena pri príjme
+  note           String?
+  createdById    String?
+  createdAt      DateTime         @default(now())
+
+  @@index([materialId])
+  @@index([productId])
+}
+
+// ---------- Objednávky a predplatné ----------
+
+model Order {
+  id             String        @id @default(cuid())
+  orderNumber    String        @unique // "OBJ2026-0001"
+  clientId       String
+  client         Client        @relation(fields: [clientId], references: [id])
+  channel        String        @default("MANUAL") // "MANUAL" | "EMAIL" | "WEB" | "SUBSCRIPTION"
+  status         String        @default("NOVA") // "NOVA" | "POTVRDENA" | "VO_VYROBE" | "EXPEDOVANA" | "DORUCENA" | "ZRUSENA"
+  orderDate      DateTime      @default(now())
+  deliveryDate   DateTime?
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  inboxMessageId String?       @unique
+  inboxMessage   InboxMessage? @relation(fields: [inboxMessageId], references: [id])
+  externalId     String? // ID objednávky vo webovom e-shope
+  note           String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  items     OrderItem[]
+  invoices  Invoice[]
+  movements StockMovement[]
+}
+
+model OrderItem {
+  id             String  @id @default(cuid())
+  orderId        String
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product @relation(fields: [productId], references: [id])
+  quantity       Int
+  unitPriceCents Int // snapshot ceny v čase objednávky
+  vatRate        Int     @default(20)
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id])
+  frequency   String // "WEEKLY" | "BIWEEKLY" | "MONTHLY"
+  nextRunDate DateTime
+  isActive    Boolean  @default(true)
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items  SubscriptionItem[]
+  orders Order[]
+}
+
+model SubscriptionItem {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  quantity       Int
+
+  @@unique([subscriptionId, productId])
+}
+
+// ---------- Inbox (budúci e-mail parsing + web formulár) ----------
+
+model InboxMessage {
+  id         String   @id @default(cuid())
+  source     String // "EMAIL" | "WEB_FORM" | "MANUAL"
+  fromEmail  String?
+  subject    String?
+  body       String
+  rawJson    String? // pôvodný payload pre neskoršie spracovanie
+  status     String   @default("NOVA") // "NOVA" | "SPRACOVANA" | "IGNOROVANA"
+  receivedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  order Order?
+}
+
+// ---------- Financie ----------
+// Jednotná evidencia faktúr: interné + import z webu a SuperFaktúry.
+// invoiceNumber (FA2026001) sa prideľuje VŽDY, aj importovaným faktúram.
+// @@unique([source, externalId]) → idempotentný import bez duplikátov.
+
+model Invoice {
+  id             String    @id @default(cuid())
+  direction      String // "VYDANA" | "PRIJATA"
+  source         String    @default("INTERNA") // "INTERNA" | "WEB" | "SUPERFAKTURA"
+  externalId     String? // ID v zdrojovom systéme
+  externalNumber String? // číslo faktúry v zdrojovom systéme
+  invoiceNumber  String    @unique // jednotné interné číslo "FA2026001" / "PF2026001"
+  clientId       String?
+  client         Client?   @relation(fields: [clientId], references: [id])
+  supplierName   String? // pre prijaté faktúry bez klienta
+  orderId        String?
+  order          Order?    @relation(fields: [orderId], references: [id])
+  issueDate      DateTime
+  dueDate        DateTime
+  deliveryDate   DateTime?
+  status         String    @default("VYSTAVENA") // "VYSTAVENA" | "UHRADENA" | "PO_SPLATNOSTI" | "STORNO"
+  totalNetCents  Int
+  totalVatCents  Int
+  totalGrossCents Int
+  variableSymbol String?
+  note           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  items InvoiceItem[]
+
+  @@unique([source, externalId])
+}
+
+model InvoiceItem {
+  id             String  @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description    String
+  quantity       Float
+  unit           String  @default("ks")
+  unitPriceCents Int
+  vatRate        Int     @default(20)
+}
+
+// Bezpečné číslovanie dokladov per rok+typ, id napr. "VYDANA-2026", "OBJ-2026", "SARZA-2026"
+model DocCounter {
+  id         String @id
+  lastNumber Int    @default(0)
+}
+
+model EkasaSale {
+  id              String   @id @default(cuid())
+  saleDate        DateTime
+  receiptNumber   String?
+  description     String?
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  quantity        Float    @default(1)
+  totalGrossCents Int
+  vatRate         Int      @default(20)
+  importBatch     String // názov súboru + čas importu (dedup / undo)
+  createdAt       DateTime @default(now())
+
+  @@unique([receiptNumber, saleDate])
+}
+
+// ---------- Plnenie plánu ----------
+// Skutočnosť sa vždy počíta live z faktúr/šarží — žiadne kešovanie.
+
+model MonthlyPlan {
+  id                    String   @id @default(cuid())
+  year                  Int
+  month                 Int
+  targetRevenueCents    Int      @default(0)
+  targetProductionUnits Int      @default(0)
+  note                  String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([year, month])
+}
