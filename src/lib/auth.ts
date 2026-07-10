@@ -9,8 +9,15 @@ export interface SessionData {
   role?: string;
 }
 
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (secret && secret.length >= 32 && !secret.includes("change-in-production")) return secret;
+  if (process.env.NODE_ENV !== "production") return "zdravyshot-dev-secret-change-in-production-32ch";
+  throw new Error("SESSION_SECRET musí byť v produkcii nastavený na náhodnú hodnotu s aspoň 32 znakmi.");
+}
+
 export const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET ?? "zdravyshot-dev-secret-change-in-production-32ch",
+  password: getSessionSecret(),
   cookieName: "zs_session",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",

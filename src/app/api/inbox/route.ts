@@ -10,8 +10,12 @@ import { inboxPayloadSchema } from "@/lib/zod-schemas";
  * { "source": "WEB_FORM", "fromEmail": "...", "subject": "...", "body": "...", "rawJson": {...} }
  */
 export async function POST(request: NextRequest) {
+  const configuredApiKey = process.env.INBOX_API_KEY;
+  if (!configuredApiKey || configuredApiKey.length < 32) {
+    return NextResponse.json({ error: "Inbox API nie je nakonfigurované" }, { status: 503 });
+  }
   const apiKey = request.headers.get("x-api-key");
-  if (!apiKey || apiKey !== process.env.INBOX_API_KEY) {
+  if (!apiKey || apiKey !== configuredApiKey) {
     return NextResponse.json({ error: "Neplatný API kľúč" }, { status: 401 });
   }
 

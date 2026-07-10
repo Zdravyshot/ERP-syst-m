@@ -14,6 +14,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Všetko okrem loginu, externých API a statických súborov
-    "/((?!login|api/inbox|api/konkurencia|_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$).*)",
+    "/((?!login|api/health|api/inbox|api/konkurencia|_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$).*)",
   ],
 };

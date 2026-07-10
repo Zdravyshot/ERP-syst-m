@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "node .next/standalone/server.js",
+    "typecheck": "tsc --noEmit",
+    "db:deploy": "prisma migrate deploy",
+    "backup:production": "sh scripts/backup-production.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
