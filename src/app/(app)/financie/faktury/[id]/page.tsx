@@ -36,7 +36,7 @@ export default async function FakturaDetailPage({ params }: { params: Promise<{ 
     <>
       <div className="print:hidden">
         <PageHeader
-          title={invoice.invoiceNumber}
+          title={invoice.invoiceNumber ?? "Koncept faktúry"}
           subtitle={`${isIssued ? "Vydaná faktúra" : "Prijatá faktúra"} · ${INVOICE_SOURCE_LABELS[invoice.source] ?? invoice.source}`}
         >
           <PrintButton />
