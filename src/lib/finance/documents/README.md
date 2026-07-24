@@ -25,8 +25,8 @@ snapshotmi dodávateľa, odberateľa, dane a položiek.
 - `GET /api/financie/dokumenty/:id` — overí integritu, zapíše audit a vráti
   súbor ako `attachment`.
 
-Obe route vyžadujú aktuálneho databázového používateľa s rolou `admin`,
-`FINANCE_ADMIN` alebo `FINANCE_OPERATOR`.
+Obe route vyžadujú aktuálneho databázového používateľa s príslušným finančným
+oprávnením: `VIEW` pre download a `CREATE_DRAFT` pre vytvorenie PDF.
 
 ## Railway Bucket
 
@@ -50,5 +50,6 @@ npm test
 npm run typecheck
 ```
 
-Testy pokrývajú PAY by square údaje, deterministické PDF, viacstranové
-doklady, idempotentné uloženie, hash, tampering a audit downloadu.
+Testy pokrývajú PAY by square údaje, deterministické a viacstranové PDF,
+dobropisy, DPH snapshoty, podmienený S3 zápis, idempotentné uloženie, hash,
+tampering a audit downloadu.

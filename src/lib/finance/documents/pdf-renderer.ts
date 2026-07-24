@@ -7,6 +7,7 @@ import {
   type PDFPage,
   rgb,
 } from "pdf-lib";
+import { DocumentGenerationError } from "./errors";
 import { createPayBySquarePng } from "./pay-by-square";
 import type { InvoicePdfData, InvoicePdfRenderer } from "./types";
 
@@ -130,16 +131,33 @@ function wrapText(
   const words = compactText(text).split(" ").filter(Boolean);
   if (words.length === 0) return [""];
 
+  const tokens = words.flatMap((word) => {
+    if (font.widthOfTextAtSize(word, size) <= maxWidth) return [word];
+    const chunks: string[] = [];
+    let chunk = "";
+    for (const character of word) {
+      const candidate = `${chunk}${character}`;
+      if (chunk && font.widthOfTextAtSize(candidate, size) > maxWidth) {
+        chunks.push(chunk);
+        chunk = character;
+      } else {
+        chunk = candidate;
+      }
+    }
+    if (chunk) chunks.push(chunk);
+    return chunks;
+  });
+
   const lines: string[] = [];
   let current = "";
-  for (const word of words) {
+  for (const word of tokens) {
     const next = current ? `${current} ${word}` : word;
     if (font.widthOfTextAtSize(next, size) <= maxWidth) {
       current = next;
       continue;
     }
     if (current) lines.push(current);
-    current = fitText(word, font, size, maxWidth);
+    current = word;
   }
   if (current) lines.push(current);
   return lines;
@@ -189,35 +207,58 @@ function drawLabelValue(
   );
 }
 
-function partyLines(party: InvoicePdfData["issuer"]): string[] {
-  const addressLine = [party.street, party.zip, party.city]
-    .filter(Boolean)
-    .join(", ");
+interface PartyTextLine {
+  text: string;
+  bold: boolean;
+}
+
+function partyLines(
+  party: InvoicePdfData["issuer"],
+  fonts: PdfFonts,
+  width: number,
+): PartyTextLine[] {
   const identifiers = [
     party.ico ? `IČO: ${party.ico}` : "",
     party.dic ? `DIČ: ${party.dic}` : "",
     party.icDph ? `IČ DPH: ${party.icDph}` : "",
   ].filter(Boolean);
 
-  return [
-    party.name,
-    addressLine,
-    ...identifiers,
-    party.email ?? "",
-    party.phone ?? "",
-  ].filter(Boolean);
+  const source: PartyTextLine[] = [
+    { text: party.name, bold: true },
+    { text: party.street ?? "", bold: false },
+    { text: [party.zip, party.city].filter(Boolean).join(" "), bold: false },
+    { text: party.country, bold: false },
+    ...identifiers.map((text) => ({ text, bold: false })),
+    { text: party.email ?? "", bold: false },
+    { text: party.phone ?? "", bold: false },
+  ].filter((line) => line.text);
+
+  const wrapped = source.flatMap((line) =>
+    wrapText(
+      line.text,
+      line.bold ? fonts.bold : fonts.regular,
+      line.bold ? 9.2 : 8.2,
+      width - 24,
+    ).map((text) => ({ text, bold: line.bold })),
+  );
+  if (wrapped.length > 12) {
+    throw new DocumentGenerationError(
+      `Identifikačné údaje subjektu ${party.name} sú príliš dlhé pre faktúru.`,
+    );
+  }
+  return wrapped;
 }
 
 function drawPartyBox(
   page: PDFPage,
   title: string,
-  party: InvoicePdfData["issuer"],
   x: number,
   y: number,
   width: number,
+  height: number,
+  lines: PartyTextLine[],
   fonts: PdfFonts,
 ): void {
-  const height = 116;
   page.drawRectangle({
     x,
     y: y - height,
@@ -243,16 +284,15 @@ function drawPartyBox(
   });
 
   let lineY = y - 42;
-  for (const [index, line] of partyLines(party).entries()) {
-    page.drawText(fitText(line, index === 0 ? fonts.bold : fonts.regular, 8.2, width - 24), {
+  for (const line of lines) {
+    page.drawText(line.text, {
       x: x + 12,
       y: lineY,
-      size: index === 0 ? 9.2 : 8.2,
-      font: index === 0 ? fonts.bold : fonts.regular,
-      color: index === 0 ? STONE_950 : STONE_700,
+      size: line.bold ? 9.2 : 8.2,
+      font: line.bold ? fonts.bold : fonts.regular,
+      color: line.bold ? STONE_950 : STONE_700,
     });
-    lineY -= index === 0 ? 16 : 13;
-    if (lineY < y - height + 10) break;
+    lineY -= line.bold ? 16 : 13;
   }
 }
 
@@ -296,7 +336,7 @@ function drawDocumentHeader(
   );
 
   if (continuation) {
-    page.drawText("Pokračovanie položiek", {
+    page.drawText("Pokračovanie dokladu", {
       x: MARGIN,
       y: PAGE_HEIGHT - 112,
       size: 8,
@@ -309,18 +349,34 @@ function drawDocumentHeader(
   const boxGap = 12;
   const boxWidth = (CONTENT_WIDTH - boxGap) / 2;
   const boxTop = PAGE_HEIGHT - 116;
-  drawPartyBox(page, "Dodávateľ", data.issuer, MARGIN, boxTop, boxWidth, fonts);
+  const issuerLines = partyLines(data.issuer, fonts, boxWidth);
+  const counterpartyLines = partyLines(data.counterparty, fonts, boxWidth);
+  const boxHeight = Math.max(
+    116,
+    38 + Math.max(issuerLines.length, counterpartyLines.length) * 13,
+  );
+  drawPartyBox(
+    page,
+    "Dodávateľ",
+    MARGIN,
+    boxTop,
+    boxWidth,
+    boxHeight,
+    issuerLines,
+    fonts,
+  );
   drawPartyBox(
     page,
     "Odberateľ",
-    data.counterparty,
     MARGIN + boxWidth + boxGap,
     boxTop,
     boxWidth,
+    boxHeight,
+    counterpartyLines,
     fonts,
   );
 
-  const detailsTop = boxTop - 140;
+  const detailsTop = boxTop - boxHeight - 24;
   const detailsWidth = (CONTENT_WIDTH - boxGap) / 2;
   drawLabelValue(
     page,
@@ -331,6 +387,17 @@ function drawDocumentHeader(
     detailsWidth,
     fonts,
   );
+  if (data.documentType === "CREDIT_NOTE") {
+    drawLabelValue(
+      page,
+      "Pôvodná faktúra",
+      data.originalInvoiceNumber ?? "—",
+      MARGIN,
+      detailsTop - 51,
+      detailsWidth,
+      fonts,
+    );
+  }
   drawLabelValue(
     page,
     "Dátum dodania",
@@ -379,7 +446,7 @@ function drawDocumentHeader(
     fonts,
   );
 
-  return detailsTop - 66;
+  return detailsTop - (data.documentType === "CREDIT_NOTE" ? 83 : 66);
 }
 
 function drawTableHeader(page: PDFPage, y: number, fonts: PdfFonts): number {
@@ -420,7 +487,12 @@ function drawTableRow(
   y: number,
   fonts: PdfFonts,
 ): number {
-  const descriptionLines = wrapText(line.description, fonts.regular, 8.2, 230).slice(0, 2);
+  const descriptionLines = wrapText(line.description, fonts.regular, 8.2, 230);
+  if (descriptionLines.length > 30) {
+    throw new DocumentGenerationError(
+      `Popis položky ${line.lineNumber} je príliš dlhý pre faktúru.`,
+    );
+  }
   const rowHeight = Math.max(26, descriptionLines.length * 11 + 10);
   page.drawLine({
     start: { x: MARGIN, y: y - rowHeight },
@@ -478,8 +550,8 @@ function drawTableRow(
     8.2,
   );
 
-  if (data.tax.domesticTaxMode === "EXEMPT") {
-    page.drawText("oslobodené", {
+  if (data.tax.vatStatus === "NON_PAYER" || line.taxCategory === "EXEMPT") {
+    page.drawText(data.tax.vatStatus === "NON_PAYER" ? "bez DPH" : "oslobodené od dane", {
       x: TABLE_COLUMNS.description + 7,
       y: y - rowHeight + 4,
       size: 6.5,
@@ -515,17 +587,19 @@ async function drawTotalsAndPayment(
   fonts: PdfFonts,
 ): Promise<void> {
   const summary = vatSummary(data);
-  page.drawText("REKAPITULÁCIA DPH", {
+  page.drawText(
+    data.tax.vatStatus === "NON_PAYER" ? "REKAPITULÁCIA" : "REKAPITULÁCIA DPH",
+    {
     x: MARGIN,
     y,
     size: 7.5,
     font: fonts.bold,
     color: STONE_500,
-  });
+    },
+  );
   let summaryY = y - 17;
-  for (const row of summary) {
-    const text = `${row.rate} % · základ ${money(row.netCents)} · DPH ${money(row.vatCents)}`;
-    page.drawText(text, {
+  if (data.tax.vatStatus === "NON_PAYER") {
+    page.drawText("Dodávateľ nie je platiteľom DPH.", {
       x: MARGIN,
       y: summaryY,
       size: 7.5,
@@ -533,6 +607,28 @@ async function drawTotalsAndPayment(
       color: STONE_700,
     });
     summaryY -= 14;
+  } else {
+    for (const row of summary) {
+      const text = `${row.rate} % · základ ${money(row.netCents)} · DPH ${money(row.vatCents)}`;
+      page.drawText(text, {
+        x: MARGIN,
+        y: summaryY,
+        size: 7.5,
+        font: fonts.regular,
+        color: STONE_700,
+      });
+      summaryY -= 14;
+    }
+    if (data.lines.some((line) => line.taxCategory === "EXEMPT")) {
+      page.drawText("Dodanie je oslobodené od dane.", {
+        x: MARGIN,
+        y: summaryY,
+        size: 7.5,
+        font: fonts.bold,
+        color: STONE_700,
+      });
+      summaryY -= 14;
+    }
   }
 
   const totalsX = 360;
@@ -540,7 +636,11 @@ async function drawTotalsAndPayment(
   const totalRows: Array<[string, string, boolean]> = [
     ["Základ dane", money(data.totalNetCents), false],
     ["DPH", money(data.totalVatCents), false],
-    ["Na úhradu", money(data.totalGrossCents), true],
+    [
+      data.documentType === "CREDIT_NOTE" ? "Suma dobropisu" : "Na úhradu",
+      money(data.totalGrossCents),
+      true,
+    ],
   ];
   let totalsY = y;
   for (const [label, value, emphasized] of totalRows) {
@@ -598,17 +698,42 @@ async function drawTotalsAndPayment(
   }
 
   if (data.note) {
-    const noteY = Math.max(48, Math.min(summaryY - 10, 78));
-    page.drawText(
-      fitText(`Poznámka: ${data.note}`, fonts.regular, 7, CONTENT_WIDTH),
-      {
-        x: MARGIN,
-        y: noteY,
-        size: 7,
-        font: fonts.regular,
-        color: STONE_500,
-      },
+    const noteLines = wrapText(
+      `Poznámka: ${data.note}`,
+      fonts.regular,
+      7,
+      CONTENT_WIDTH,
     );
+    if (noteLines.length <= 3) {
+      let noteY = Math.max(48, Math.min(summaryY - 10, 78));
+      for (const line of noteLines) {
+        page.drawText(line, {
+          x: MARGIN,
+          y: noteY,
+          size: 7,
+          font: fonts.regular,
+          color: STONE_500,
+        });
+        noteY -= 10;
+      }
+    } else {
+      let notePage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      let noteY = drawDocumentHeader(notePage, data, fonts, true);
+      for (const line of noteLines) {
+        if (noteY < 50) {
+          notePage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+          noteY = drawDocumentHeader(notePage, data, fonts, true);
+        }
+        notePage.drawText(line, {
+          x: MARGIN,
+          y: noteY,
+          size: 7,
+          font: fonts.regular,
+          color: STONE_500,
+        });
+        noteY -= 11;
+      }
+    }
   }
 }
 
@@ -672,12 +797,22 @@ export class SlovakInvoicePdfRenderer implements InvoicePdfRenderer {
         fonts.regular,
         8.2,
         230,
-      ).slice(0, 2).length;
+      ).length;
+      if (descriptionLineCount > 30) {
+        throw new DocumentGenerationError(
+          `Popis položky ${line.lineNumber} je príliš dlhý pre faktúru.`,
+        );
+      }
       const requiredHeight = Math.max(26, descriptionLineCount * 11 + 10);
       if (tableY - requiredHeight < 180) {
         page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
         tableY = drawDocumentHeader(page, data, fonts, true);
         tableY = drawTableHeader(page, tableY, fonts);
+      }
+      if (tableY - requiredHeight < 42) {
+        throw new DocumentGenerationError(
+          `Popis položky ${line.lineNumber} sa nezmestí na samostatnú stranu.`,
+        );
       }
       tableY = drawTableRow(page, data, line, tableY, fonts);
     }

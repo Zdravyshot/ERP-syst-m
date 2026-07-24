@@ -11,6 +11,7 @@ export interface InvoicePdfData {
   id: string;
   invoiceNumber: string;
   documentType: InvoiceDocumentType;
+  originalInvoiceNumber?: string;
   issueDate: Date;
   dueDate: Date;
   finalizedAt: Date;

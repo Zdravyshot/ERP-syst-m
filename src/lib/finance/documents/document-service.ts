@@ -4,6 +4,7 @@ import type {
   StoredDocument,
 } from "../contracts";
 import {
+  DocumentConfigurationError,
   DocumentIntegrityError,
   DocumentNotFoundError,
 } from "./errors";
@@ -27,6 +28,20 @@ export class DefaultDocumentService implements DocumentService {
     private readonly storage: DocumentObjectStorage,
     private readonly renderer: InvoicePdfRenderer,
   ) {}
+
+  private assertStorageMatches(document: {
+    storageProvider: string;
+    bucket: string;
+  }): void {
+    if (
+      document.storageProvider !== this.storage.provider ||
+      document.bucket !== this.storage.bucket
+    ) {
+      throw new DocumentConfigurationError(
+        "Dokument patrí do iného úložiska, než je aktuálne nakonfigurované.",
+      );
+    }
+  }
 
   async generateAndStoreInvoicePdf(invoiceId: string): Promise<StoredDocument> {
     const data = await this.repository.getInvoicePdfData(invoiceId);
@@ -63,6 +78,7 @@ export class DefaultDocumentService implements DocumentService {
   async verifyHash(documentId: string): Promise<boolean> {
     const document = await this.repository.getDocument(documentId);
     if (!document || document.archivedAt) return false;
+    this.assertStorageMatches(document);
     const object = await this.storage.getObject(document.objectKey);
     const actualHash = sha256(object.bytes);
     return (
@@ -78,6 +94,7 @@ export class DefaultDocumentService implements DocumentService {
   ): Promise<AuthorizedDocumentDownload> {
     const document = await this.repository.getDocument(documentId);
     if (!document || document.archivedAt) throw new DocumentNotFoundError();
+    this.assertStorageMatches(document);
     if (!document.isImmutable) {
       throw new DocumentIntegrityError("Dokument nie je označený ako nemenný.");
     }

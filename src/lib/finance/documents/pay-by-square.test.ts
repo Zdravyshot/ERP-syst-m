@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import { createPayBySquarePayload } from "./pay-by-square";
 import { createInvoicePdfFixture } from "./test-fixtures";
 
@@ -7,32 +6,29 @@ test("PAY by square obsahuje presnú sumu, IBAN, splatnosť a variabilný symbol
   const fixture = createInvoicePdfFixture();
   const payload = await createPayBySquarePayload(fixture);
 
-  assert.ok(payload);
+  expect(payload).toBeTruthy();
   const { decode } = await import("bysquare/pay");
-  const decoded = decode(payload);
-  assert.equal(decoded.invoiceId, "2026009");
-  assert.equal(decoded.payments.length, 1);
-  assert.equal(decoded.payments[0]?.amount, 123);
-  assert.equal(decoded.payments[0]?.currencyCode, "EUR");
-  assert.equal(decoded.payments[0]?.variableSymbol, "2026009");
-  assert.equal(decoded.payments[0]?.paymentDueDate, "20260807");
-  assert.equal(
-    decoded.payments[0]?.bankAccounts[0]?.iban,
+  const decoded = decode(payload!);
+  expect(decoded.invoiceId).toBe("2026009");
+  expect(decoded.payments.length).toBe(1);
+  expect(decoded.payments[0]?.amount).toBe(123);
+  expect(decoded.payments[0]?.currencyCode).toBe("EUR");
+  expect(decoded.payments[0]?.variableSymbol).toBe("2026009");
+  expect(decoded.payments[0]?.paymentDueDate).toBe("20260807");
+  expect(decoded.payments[0]?.bankAccounts[0]?.iban).toBe(
     "SK9611000000002918599669",
   );
 });
 
 test("dobropis a nulová suma nevytvárajú platobný QR kód", async () => {
-  assert.equal(
+  expect(
     await createPayBySquarePayload(
       createInvoicePdfFixture({ documentType: "CREDIT_NOTE" }),
     ),
-    null,
-  );
-  assert.equal(
+  ).toBeNull();
+  expect(
     await createPayBySquarePayload(
       createInvoicePdfFixture({ totalGrossCents: 0 }),
     ),
-    null,
-  );
+  ).toBeNull();
 });

@@ -107,6 +107,7 @@ export class PrismaDocumentRepository implements DocumentRepository {
         totalNetCents: true,
         totalVatCents: true,
         totalGrossCents: true,
+        originalInvoice: { select: { invoiceNumber: true } },
         items: {
           orderBy: { lineNumber: "asc" },
           select: {
@@ -162,6 +163,19 @@ export class PrismaDocumentRepository implements DocumentRepository {
         "Finalizovanému dokladu chýbajú platné nemenné snapshoty.",
       );
     }
+    if (tax.data.vatStatus === "PAYER" && !issuer.data.icDph) {
+      throw new DocumentGenerationError(
+        "Snapshot platiteľa DPH neobsahuje IČ DPH dodávateľa.",
+      );
+    }
+    if (
+      invoice.documentType === "CREDIT_NOTE" &&
+      !invoice.originalInvoice?.invoiceNumber
+    ) {
+      throw new DocumentGenerationError(
+        "Dobropisu chýba číslo pôvodnej faktúry.",
+      );
+    }
 
     const lines = invoice.items.map((item) => {
       if (
@@ -176,6 +190,14 @@ export class PrismaDocumentRepository implements DocumentRepository {
       if (item.taxCategory !== null && item.taxCategory !== "STANDARD" && item.taxCategory !== "EXEMPT") {
         throw new DocumentGenerationError(
           `Položka ${item.lineNumber} má neznámu daňovú kategóriu.`,
+        );
+      }
+      if (
+        item.taxCategory === "EXEMPT" &&
+        (item.vatRate !== 0 || item.totalVatCents !== 0)
+      ) {
+        throw new DocumentGenerationError(
+          `Oslobodená položka ${item.lineNumber} obsahuje DPH.`,
         );
       }
       const taxCategory: "STANDARD" | "EXEMPT" | undefined =
@@ -201,6 +223,14 @@ export class PrismaDocumentRepository implements DocumentRepository {
     if (lines.length === 0) {
       throw new DocumentGenerationError("Doklad nemá žiadne položky.");
     }
+    if (
+      tax.data.vatStatus === "NON_PAYER" &&
+      lines.some((line) => line.vatRate !== 0 || line.totalVatCents !== 0)
+    ) {
+      throw new DocumentGenerationError(
+        "Doklad neplatiteľa DPH nesmie obsahovať vyčíslenú DPH.",
+      );
+    }
 
     const calculated = lines.reduce(
       (totals, line) => ({
@@ -224,6 +254,8 @@ export class PrismaDocumentRepository implements DocumentRepository {
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
       documentType: invoice.documentType,
+      originalInvoiceNumber:
+        invoice.originalInvoice?.invoiceNumber ?? undefined,
       issueDate: invoice.issueDate,
       dueDate: invoice.dueDate,
       finalizedAt: invoice.finalizedAt,

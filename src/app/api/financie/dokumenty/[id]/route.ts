@@ -18,7 +18,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireFinanceDocumentUser();
+    const user = await requireFinanceDocumentUser("VIEW");
     const { id } = await context.params;
     const download = await getDocumentService().getAuthorizedDownload(id, user.id);
 

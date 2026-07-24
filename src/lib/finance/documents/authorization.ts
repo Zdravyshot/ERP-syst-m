@@ -1,12 +1,13 @@
 import { getSession } from "@/lib/auth";
+import type { FinancePermission } from "@/lib/finance/permissions";
+import { hasFinancePermission } from "@/lib/finance/permissions";
 import { prisma } from "@/lib/prisma";
-import { financeRoleSchema } from "@/lib/zod-schemas";
 import {
   DocumentAccessError,
   DocumentAuthenticationError,
 } from "./errors";
 
-export async function requireFinanceDocumentUser() {
+export async function requireFinanceDocumentUser(permission: FinancePermission) {
   const session = await getSession();
   if (!session.userId) throw new DocumentAuthenticationError();
 
@@ -15,7 +16,7 @@ export async function requireFinanceDocumentUser() {
     select: { id: true, email: true, name: true, role: true },
   });
   if (!user) throw new DocumentAuthenticationError();
-  if (!financeRoleSchema.safeParse(user.role).success) {
+  if (!hasFinancePermission(user.role, permission)) {
     throw new DocumentAccessError();
   }
   return user;

@@ -10,7 +10,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireFinanceDocumentUser();
+    await requireFinanceDocumentUser("CREATE_DRAFT");
     const { id } = await context.params;
     const document = await getDocumentService().generateAndStoreInvoicePdf(id);
 
