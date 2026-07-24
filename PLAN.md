@@ -2,6 +2,11 @@
 
 Interný ERP pre Zdravý shot. Na projekte pracujú **dvaja ľudia paralelne, každý so svojím Claude Code**, koordinácia cez GitHub (`main` + feature branchy + PR).
 
+> **Aktívna iniciatíva:** pokračovanie projektu pre troch developerov a náhrada
+> SuperFaktúry/Omegy je rozpísaná v
+> [`docs/FINANCE_V2_IMPLEMENTATION_PLAN.md`](docs/FINANCE_V2_IMPLEMENTATION_PLAN.md).
+> Tento dokument nižšie zostáva historickým plánom pôvodnej v1.
+
 ## Stav
 
 - [x] **Fáza 0 — spoločný základ** (hotová, je v `main`): scaffold Next.js 16 + Prisma 6 (SQLite) + kompletná schéma + migrácia + seed, iron-session auth, layout so slovenským sidebarom, placeholder stránky všetkých modulov, `POST /api/inbox`, `GET /api/konkurencia` stub, zdieľané helpery v `src/lib/`
