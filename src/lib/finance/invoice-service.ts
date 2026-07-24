@@ -21,6 +21,7 @@ import type {
   TaxSnapshot,
 } from "./contracts";
 import {
+  assertCreditWithinOriginal,
   assertDocumentTransition,
   calculateInvoice,
   calculatePaymentStatus,
@@ -339,7 +340,11 @@ export class PrismaInvoiceService implements InvoiceService {
       }
 
       const externalParty =
-        partyFromClient(invoice.client) ?? parsePartySnapshot(invoice.counterpartySnapshot);
+        (invoice.documentType === "CREDIT_NOTE"
+          ? parsePartySnapshot(invoice.counterpartySnapshot)
+          : partyFromClient(invoice.client)) ??
+        partyFromClient(invoice.client) ??
+        parsePartySnapshot(invoice.counterpartySnapshot);
       if (!externalParty) blockers.push("Chýba úplný snapshot obchodného partnera.");
 
       const vatApplies =
@@ -352,10 +357,15 @@ export class PrismaInvoiceService implements InvoiceService {
       for (const item of invoice.items) {
         let vatRate = item.vatRate;
         let taxCategory = item.taxCategory === "EXEMPT" ? "EXEMPT" as const : "STANDARD" as const;
-        if (invoice.direction === "VYDANA" && !vatApplies) {
+        if (invoice.direction === "VYDANA" && invoice.documentType !== "CREDIT_NOTE" && !vatApplies) {
           vatRate = 0;
           taxCategory = "EXEMPT";
-        } else if (vatApplies && item.productId && taxCategory !== "EXEMPT") {
+        } else if (
+          vatApplies &&
+          invoice.documentType !== "CREDIT_NOTE" &&
+          item.productId &&
+          taxCategory !== "EXEMPT"
+        ) {
           const configuredRate = await tx.productVatRate.findFirst({
             where: {
               productId: item.productId,
@@ -499,11 +509,21 @@ export class PrismaInvoiceService implements InvoiceService {
   async createCreditNote(input: CreateCreditNoteInput): Promise<InvoiceResult> {
     const original = await prisma.invoice.findUnique({
       where: { id: input.originalInvoiceId },
-      include: { items: { orderBy: { lineNumber: "asc" } }, client: true },
+      include: {
+        items: { orderBy: { lineNumber: "asc" } },
+        client: true,
+        creditNotes: {
+          where: { documentStatus: { not: "CANCELLED" } },
+          select: { totalGrossCents: true },
+        },
+      },
     });
     if (!original) throw new FinanceDomainError("INVOICE_NOT_FOUND", "Pôvodná faktúra neexistuje.");
     if (original.documentStatus !== "ISSUED") {
       throw new FinanceDomainError("INVALID_TRANSITION", "Dobropis možno vytvoriť iba k vystavenej faktúre.");
+    }
+    if (original.documentType !== "INVOICE") {
+      throw new FinanceDomainError("INVALID_TRANSITION", "Dobropis nemožno vytvoriť k inému dobropisu.");
     }
 
     const snapshot =
@@ -522,6 +542,12 @@ export class PrismaInvoiceService implements InvoiceService {
       vatRate: item.vatRate,
       taxCategory: item.taxCategory === "EXEMPT" ? "EXEMPT" as const : "STANDARD" as const,
     }));
+    const calculation = calculateInvoice({ currency: "EUR", lines: items });
+    const alreadyCredited = original.creditNotes.reduce(
+      (sum, creditNote) => sum + creditNote.totalGrossCents,
+      0,
+    );
+    assertCreditWithinOriginal(original.totalGrossCents, alreadyCredited, calculation.totalGrossCents);
 
     return this.createDraft({
       direction: asDirection(original.direction),

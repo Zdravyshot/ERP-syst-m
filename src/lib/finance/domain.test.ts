@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertDocumentTransition,
+  assertCreditWithinOriginal,
   calculateInvoice,
   calculatePaymentStatus,
   canTransitionDocument,
@@ -100,4 +101,12 @@ test("produkčná infraštruktúra je fail-closed", () => {
     FINANCE_MAIL_FROM: "info@zdravyshot.sk",
   });
   assert.deepEqual(ready, { ready: true, blockers: [] });
+});
+
+test("dobropisy nemôžu prekročiť sumu pôvodnej faktúry", () => {
+  assert.doesNotThrow(() => assertCreditWithinOriginal(10_000, 4_000, 6_000));
+  assert.throws(
+    () => assertCreditWithinOriginal(10_000, 4_000, 6_001),
+    (error) => error instanceof FinanceDomainError && error.code === "INVALID_MONEY",
+  );
 });
