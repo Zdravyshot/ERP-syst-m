@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { hasFinancePermission } from "@/lib/finance/permissions";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCents } from "@/lib/format";
 import { btnPrimary, btnSecondary, card, cardHeader, table, thead, tr, td, tdRight, tdRightMuted } from "@/components/ui";
@@ -15,28 +17,27 @@ function KpiCard({ label, value, hint }: { label: string; value: string; hint?: 
 }
 
 export default async function FinanciePage() {
+  const session = await getSession();
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const [issuedThisMonth, receivedThisMonth, unpaid, overdue, ekasaThisMonth, products] =
+  const [issuedDocuments, receivedDocuments, outstandingInvoices, ekasaThisMonth, products] =
     await Promise.all([
-      prisma.invoice.aggregate({
-        where: { direction: "VYDANA", status: { not: "STORNO" }, issueDate: { gte: monthStart } },
-        _sum: { totalGrossCents: true },
-        _count: true,
+      prisma.invoice.findMany({
+        where: { direction: "VYDANA", documentStatus: "ISSUED", issueDate: { gte: monthStart } },
+        select: { documentType: true, totalGrossCents: true },
       }),
-      prisma.invoice.aggregate({
-        where: { direction: "PRIJATA", status: { not: "STORNO" }, issueDate: { gte: monthStart } },
-        _sum: { totalGrossCents: true },
-        _count: true,
+      prisma.invoice.findMany({
+        where: { direction: "PRIJATA", documentStatus: "ISSUED", issueDate: { gte: monthStart } },
+        select: { documentType: true, totalGrossCents: true },
       }),
-      prisma.invoice.aggregate({
-        where: { direction: "VYDANA", status: "VYSTAVENA" },
-        _sum: { totalGrossCents: true },
-        _count: true,
-      }),
-      prisma.invoice.count({
-        where: { direction: "VYDANA", status: "VYSTAVENA", dueDate: { lt: now } },
+      prisma.invoice.findMany({
+        where: { direction: "VYDANA", documentType: "INVOICE", documentStatus: "ISSUED" },
+        select: {
+          totalGrossCents: true,
+          dueDate: true,
+          paymentAllocations: { where: { reversedAt: null }, select: { amountCents: true } },
+        },
       }),
       prisma.ekasaSale.aggregate({
         where: { saleDate: { gte: monthStart } },
@@ -49,8 +50,24 @@ export default async function FinanciePage() {
       }),
     ]);
 
+  const signedTotal = (documents: Array<{ documentType: string; totalGrossCents: number }>) =>
+    documents.reduce(
+      (sum, document) => sum + document.totalGrossCents * (document.documentType === "CREDIT_NOTE" ? -1 : 1),
+      0,
+    );
+  const issuedThisMonthCents = signedTotal(issuedDocuments);
+  const receivedThisMonthCents = signedTotal(receivedDocuments);
+  const outstanding = outstandingInvoices.map((invoice) => {
+    const allocated = invoice.paymentAllocations.reduce((sum, allocation) => sum + allocation.amountCents, 0);
+    return { dueDate: invoice.dueDate, remainingCents: Math.max(0, invoice.totalGrossCents - allocated) };
+  });
+  const unpaidCents = outstanding.reduce((sum, invoice) => sum + invoice.remainingCents, 0);
+  const unpaidCount = outstanding.filter((invoice) => invoice.remainingCents > 0).length;
+  const overdue = outstanding.filter(
+    (invoice) => invoice.remainingCents > 0 && invoice.dueDate.getTime() < now.getTime(),
+  ).length;
   const revenueThisMonth =
-    (issuedThisMonth._sum.totalGrossCents ?? 0) + (ekasaThisMonth._sum.totalGrossCents ?? 0);
+    issuedThisMonthCents + (ekasaThisMonth._sum.totalGrossCents ?? 0);
 
   // Jednotková ekonomika: náklad surovín na kus podľa receptúry × posledné nákupné ceny
   const margins = products
@@ -90,12 +107,12 @@ export default async function FinanciePage() {
         <KpiCard
           label="Tržby tento mesiac"
           value={formatCents(revenueThisMonth)}
-          hint={`${issuedThisMonth._count} faktúr + eKasa`}
+          hint={`${issuedDocuments.length} dokladov + eKasa`}
         />
         <KpiCard
           label="Neuhradené faktúry"
-          value={formatCents(unpaid._sum.totalGrossCents ?? 0)}
-          hint={`${unpaid._count} vydaných čaká na úhradu`}
+          value={formatCents(unpaidCents)}
+          hint={`${unpaidCount} vydaných čaká na úhradu`}
         />
         <KpiCard
           label="Po splatnosti"
@@ -104,8 +121,8 @@ export default async function FinanciePage() {
         />
         <KpiCard
           label="Náklady tento mesiac"
-          value={formatCents(receivedThisMonth._sum.totalGrossCents ?? 0)}
-          hint={`${receivedThisMonth._count} prijatých faktúr`}
+          value={formatCents(receivedThisMonthCents)}
+          hint={`${receivedDocuments.length} prijatých dokladov`}
         />
       </div>
 
@@ -156,9 +173,16 @@ export default async function FinanciePage() {
 
         <div className="space-y-4">
           {[
-            { href: "/financie/faktury", title: "Faktúry", desc: "Jednotná evidencia — interné, web, SuperFaktúra. Vystavovanie, stavy, tlač." },
+            { href: "/financie/faktury", title: "Faktúry", desc: "Koncepty, finalizácia, úhrady a nemenné doklady." },
             { href: "/financie/import", title: "Import zo SuperFaktúry", desc: "CSV upload s náhľadom, idempotentný — bez duplikátov." },
             { href: "/financie/ekasa", title: "eKasa", desc: "Import hotovostných predajov z pokladne, deduplikácia dokladov." },
+            ...(hasFinancePermission(session.role, "CONFIGURE")
+              ? [{
+                  href: "/financie/nastavenia",
+                  title: "Nastavenia financií",
+                  desc: "Firemný profil, DPH, bankový účet, číselný rad a produkčný go-live.",
+                }]
+              : []),
           ].map((item) => (
             <Link
               key={item.href}

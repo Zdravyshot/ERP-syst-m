@@ -73,7 +73,15 @@ const NAV_ITEMS = [
   { href: "/konkurencia", label: "Konkurencia", icon: "konkurencia" },
 ];
 
-export function Sidebar({ userName, logoutAction }: { userName: string; logoutAction: () => void }) {
+export function Sidebar({
+  userName,
+  canViewFinance,
+  logoutAction,
+}: {
+  userName: string;
+  canViewFinance: boolean;
+  logoutAction: () => void;
+}) {
   const pathname = usePathname();
 
   return (
@@ -93,7 +101,7 @@ export function Sidebar({ userName, logoutAction }: { userName: string; logoutAc
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-5">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => item.href !== "/financie" || canViewFinance).map((item) => {
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
             <Link
