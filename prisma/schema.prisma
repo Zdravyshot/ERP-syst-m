@@ -48,6 +48,52 @@ model Client {
   subscriptions Subscription[]
 }
 
+// ---------- Firemný a daňový profil ----------
+
+model CompanyProfile {
+  id        String    @id @default(cuid())
+  legalName String
+  tradeName String?
+  ico       String
+  dic       String
+  icDph     String?
+  email     String
+  phone     String?
+  street    String
+  city      String
+  zip       String
+  country   String    @default("SK")
+  validFrom DateTime
+  validTo   DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  taxProfiles  TaxProfile[]
+  bankAccounts BankAccount[]
+
+  @@index([validFrom, validTo])
+}
+
+model TaxProfile {
+  id                    String         @id @default(cuid())
+  companyProfileId      String
+  companyProfile        CompanyProfile @relation(fields: [companyProfileId], references: [id], onDelete: Restrict)
+  vatStatus             String         @default("NON_PAYER") // "NON_PAYER" | "PAYER"
+  vatRegisteredFrom     DateTime?
+  domesticTaxMode       String         @default("STANDARD") // "STANDARD" | "EXEMPT"
+  validFrom             DateTime
+  validTo               DateTime?
+  accountantConfirmedAt DateTime?
+  accountantConfirmedBy String?
+  note                  String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@unique([companyProfileId, validFrom])
+  @@index([validFrom, validTo])
+}
+
 // ---------- Katalóg ----------
 
 model Product {
@@ -71,6 +117,25 @@ model Product {
   movements         StockMovement[]
   subscriptionItems SubscriptionItem[]
   ekasaSales        EkasaSale[]
+  vatRates          ProductVatRate[]
+  invoiceItems      InvoiceItem[]
+}
+
+model ProductVatRate {
+  id          String    @id @default(cuid())
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rate        Int
+  validFrom   DateTime
+  validTo     DateTime?
+  confirmedAt DateTime?
+  confirmedBy String?
+  sourceNote  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([productId, validFrom])
+  @@index([validFrom, validTo])
 }
 
 model Material {
@@ -232,48 +297,302 @@ model InboxMessage {
 }
 
 // ---------- Financie ----------
-// Jednotná evidencia faktúr: interné + import z webu a SuperFaktúry.
-// invoiceNumber (FA2026001) sa prideľuje VŽDY, aj importovaným faktúram.
+// Jednotná evidencia faktúr: interné + import z webu, SuperFaktúry a Omegy.
+// invoiceNumber sa prideľuje až pri finalizácii, preto je pri koncepte null.
 // @@unique([source, externalId]) → idempotentný import bez duplikátov.
 
 model Invoice {
-  id             String    @id @default(cuid())
-  direction      String // "VYDANA" | "PRIJATA"
-  source         String    @default("INTERNA") // "INTERNA" | "WEB" | "SUPERFAKTURA"
-  externalId     String? // ID v zdrojovom systéme
-  externalNumber String? // číslo faktúry v zdrojovom systéme
-  invoiceNumber  String    @unique // jednotné interné číslo "FA2026001" / "PF2026001"
-  clientId       String?
-  client         Client?   @relation(fields: [clientId], references: [id])
-  supplierName   String? // pre prijaté faktúry bez klienta
-  orderId        String?
-  order          Order?    @relation(fields: [orderId], references: [id])
-  issueDate      DateTime
-  dueDate        DateTime
-  deliveryDate   DateTime?
-  status         String    @default("VYSTAVENA") // "VYSTAVENA" | "UHRADENA" | "PO_SPLATNOSTI" | "STORNO"
-  totalNetCents  Int
-  totalVatCents  Int
-  totalGrossCents Int
-  variableSymbol String?
-  note           String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                   String    @id @default(cuid())
+  direction            String // "VYDANA" | "PRIJATA"
+  documentType         String    @default("INVOICE") // "INVOICE" | "CREDIT_NOTE"
+  documentStatus       String    @default("ISSUED") // "DRAFT" | "ISSUED" | "CANCELLED"
+  source               String    @default("INTERNA") // "INTERNA" | "WEB" | "SUPERFAKTURA" | "OMEGA"
+  externalId           String? // ID v zdrojovom systéme
+  externalNumber       String? // číslo faktúry v zdrojovom systéme
+  invoiceNumber        String?   @unique // vydaná: "2026009"; pri koncepte null
+  currency             String    @default("EUR")
+  clientId             String?
+  client               Client?   @relation(fields: [clientId], references: [id])
+  supplierName         String? // legacy zobrazenie prijatej faktúry
+  orderId              String?
+  order                Order?    @relation(fields: [orderId], references: [id])
+  originalInvoiceId    String?
+  originalInvoice      Invoice?  @relation("InvoiceCreditNotes", fields: [originalInvoiceId], references: [id], onDelete: Restrict)
+  creditNotes          Invoice[] @relation("InvoiceCreditNotes")
+  issueDate            DateTime
+  dueDate              DateTime
+  deliveryDate         DateTime?
+  finalizedAt          DateTime?
+  cancelledAt          DateTime?
+  cancelReason         String?
+  createdById          String?
+  finalizedById        String?
+  cancelledById        String?
+  status               String    @default("VYSTAVENA") // legacy do migrácie UI v A1
+  totalNetCents        Int
+  totalVatCents        Int
+  totalGrossCents      Int
+  variableSymbol       String?
+  issuerSnapshot       Json?
+  counterpartySnapshot Json?
+  taxSnapshot          Json?
+  note                 String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  items InvoiceItem[]
+  items              InvoiceItem[]
+  paymentAllocations PaymentAllocation[]
+  documents          DocumentAsset[]
+  emailDeliveries    EmailDelivery[]
 
   @@unique([source, externalId])
+  @@index([direction, documentStatus, issueDate])
+  @@index([originalInvoiceId])
 }
 
 model InvoiceItem {
-  id             String  @id @default(cuid())
-  invoiceId      String
-  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  description    String
-  quantity       Float
-  unit           String  @default("ks")
-  unitPriceCents Int
-  vatRate        Int     @default(20)
+  id              String   @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  lineNumber      Int      @default(1)
+  description     String
+  productSku      String?
+  quantity        Float
+  unit            String   @default("ks")
+  unitPriceCents  Int
+  vatRate         Int      @default(20)
+  totalNetCents   Int?
+  totalVatCents   Int?
+  totalGrossCents Int?
+  taxCategory     String? // napr. "STANDARD" | "EXEMPT"
+
+  @@index([invoiceId, lineNumber])
+}
+
+model Payment {
+  id                String           @id @default(cuid())
+  direction         String           @default("INCOMING") // "INCOMING" | "OUTGOING"
+  source            String           @default("MANUAL") // "MANUAL" | "BANK_IMPORT" | "TATRA_PREMIUM"
+  amountCents       Int
+  currency          String           @default("EUR")
+  paidAt            DateTime
+  reference         String?
+  variableSymbol    String?
+  counterpartyName  String?
+  counterpartyIban  String?
+  bankTransactionId String?          @unique
+  bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id], onDelete: Restrict)
+  note              String?
+  createdById       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  allocations PaymentAllocation[]
+
+  @@index([variableSymbol, currency, amountCents])
+  @@index([paidAt])
+}
+
+model PaymentAllocation {
+  id            String    @id @default(cuid())
+  paymentId     String
+  payment       Payment   @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  invoiceId     String
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  amountCents   Int
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  reversedAt    DateTime?
+  reversedById  String?
+  reverseReason String?
+
+  @@unique([paymentId, invoiceId])
+  @@index([invoiceId, reversedAt])
+}
+
+model BankConnection {
+  id                    String    @id @default(cuid())
+  provider              String // "TATRA_PREMIUM" | "STATEMENT_IMPORT"
+  status                String    @default("DISCONNECTED") // "CONNECTED" | "DISCONNECTED" | "REAUTH_REQUIRED" | "ERROR"
+  consentId             String?
+  encryptedRefreshToken String?
+  tokenKeyVersion       String?
+  tokenExpiresAt        DateTime?
+  syncCursor            String?
+  lastSyncedAt          DateTime?
+  lastError             String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  accounts     BankAccount[]
+  transactions BankTransaction[]
+}
+
+model BankAccount {
+  id                String          @id @default(cuid())
+  companyProfileId  String?
+  companyProfile    CompanyProfile? @relation(fields: [companyProfileId], references: [id], onDelete: Restrict)
+  bankConnectionId  String?
+  bankConnection    BankConnection? @relation(fields: [bankConnectionId], references: [id], onDelete: SetNull)
+  providerAccountId String?
+  name              String
+  iban              String
+  bic               String?
+  currency          String          @default("EUR")
+  isPrimary         Boolean         @default(false)
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  transactions BankTransaction[]
+
+  @@unique([iban, currency])
+  @@unique([bankConnectionId, providerAccountId])
+}
+
+model BankTransaction {
+  id                    String         @id @default(cuid())
+  bankConnectionId      String
+  bankConnection        BankConnection @relation(fields: [bankConnectionId], references: [id], onDelete: Restrict)
+  bankAccountId         String
+  bankAccount           BankAccount    @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  providerTransactionId String
+  status                String         @default("BOOKED") // "PENDING" | "BOOKED"
+  bookingDate           DateTime
+  valueDate             DateTime?
+  amountCents           Int
+  currency              String         @default("EUR")
+  counterpartyName      String?
+  counterpartyIban      String?
+  variableSymbol        String?
+  constantSymbol        String?
+  specificSymbol        String?
+  remittanceInfo        String?
+  rawPayload            Json?
+  importedAt            DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  payment Payment?
+
+  @@unique([bankConnectionId, providerTransactionId])
+  @@index([bankAccountId, bookingDate])
+  @@index([variableSymbol, currency, amountCents])
+}
+
+model DocumentAsset {
+  id              String    @id @default(cuid())
+  invoiceId       String?
+  invoice         Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  type            String // "INVOICE_PDF" | "CREDIT_NOTE_PDF" | "ATTACHMENT"
+  storageProvider String    @default("RAILWAY_BUCKET")
+  bucket          String
+  objectKey       String    @unique
+  fileName        String
+  contentType     String
+  byteSize        Int
+  sha256          String
+  isImmutable     Boolean   @default(true)
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  archivedAt      DateTime?
+
+  emailDeliveries EmailDelivery[]
+
+  @@index([invoiceId, type])
+  @@index([sha256])
+}
+
+model OutboxEvent {
+  id             String    @id @default(cuid())
+  type           String // "INVOICE_PDF" | "INVOICE_EMAIL" | "REMINDER_EMAIL" | ...
+  aggregateType  String
+  aggregateId    String
+  idempotencyKey String    @unique
+  payload        Json
+  status         String    @default("PENDING") // "PENDING" | "PROCESSING" | "DONE" | "FAILED"
+  attempts       Int       @default(0)
+  availableAt    DateTime  @default(now())
+  lockedAt       DateTime?
+  processedAt    DateTime?
+  lastError      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  emailDelivery EmailDelivery?
+
+  @@index([status, availableAt])
+}
+
+model EmailDelivery {
+  id                String         @id @default(cuid())
+  invoiceId         String
+  invoice           Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  documentId        String?
+  document          DocumentAsset? @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  outboxEventId     String?        @unique
+  outboxEvent       OutboxEvent?   @relation(fields: [outboxEventId], references: [id], onDelete: Restrict)
+  provider          String
+  providerMessageId String?        @unique
+  fromAddress       String
+  toAddress         String
+  subject           String
+  status            String         @default("PENDING") // "PENDING" | "SENT" | "DELIVERED" | "FAILED" | "BOUNCED"
+  attemptCount      Int            @default(0)
+  lastAttemptAt     DateTime?
+  nextAttemptAt     DateTime?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  errorCode         String?
+  errorMessage      String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([invoiceId, createdAt])
+  @@index([status, nextAttemptAt])
+}
+
+model ImportBatch {
+  id              String    @id @default(cuid())
+  source          String // "OMEGA" | "SUPERFAKTURA" | "BANK_STATEMENT"
+  fileName        String
+  sha256          String
+  mode            String // "DRY_RUN" | "COMMIT"
+  status          String    @default("PENDING") // "PENDING" | "VALIDATED" | "COMMITTED" | "FAILED"
+  partnerCount    Int       @default(0)
+  invoiceCount    Int       @default(0)
+  itemCount       Int       @default(0)
+  totalGrossCents Int       @default(0)
+  warningCount    Int       @default(0)
+  errorCount      Int       @default(0)
+  summary         Json?
+  backupReference String?
+  createdById     String?
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@unique([source, sha256, mode])
+  @@index([source, status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorEmail String?
+  action     String
+  entityType String
+  entityId   String
+  beforeData Json?
+  afterData  Json?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 // Bezpečné číslovanie dokladov per rok+typ, id napr. "VYDANA-2026", "OBJ-2026", "SARZA-2026"

@@ -55,7 +55,7 @@ export function computeTotals(lines: LineInput[]): Totals {
 }
 
 export const INVOICE_STATUSES = ["VYSTAVENA", "UHRADENA", "PO_SPLATNOSTI", "STORNO"] as const;
-export const INVOICE_SOURCES = ["INTERNA", "WEB", "SUPERFAKTURA"] as const;
+export const INVOICE_SOURCES = ["INTERNA", "WEB", "SUPERFAKTURA", "OMEGA"] as const;
 export type InvoiceSource = (typeof INVOICE_SOURCES)[number];
 
 export const INVOICE_STATUS_LABELS: Record<string, string> = {
@@ -69,6 +69,7 @@ export const INVOICE_SOURCE_LABELS: Record<string, string> = {
   INTERNA: "Interná",
   WEB: "Web",
   SUPERFAKTURA: "SuperFaktúra",
+  OMEGA: "Omega",
 };
 
 /**
@@ -127,7 +128,7 @@ export async function importExternalInvoice(input: ExternalInvoiceInput): Promis
   const existing = await prisma.invoice.findUnique({
     where: { source_externalId: { source: input.source, externalId: input.externalId } },
   });
-  if (existing) return { created: false, invoiceNumber: existing.invoiceNumber };
+  if (existing) return { created: false, invoiceNumber: existing.invoiceNumber ?? undefined };
 
   const invoiceNumber = await prisma.$transaction(async (tx) => {
     const clientId = await matchOrCreateClient(tx, {
