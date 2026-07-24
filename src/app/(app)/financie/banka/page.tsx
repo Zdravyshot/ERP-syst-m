@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { hasFinancePermission } from "@/lib/finance/permissions";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/Badge";
 import { formatCents, formatDate, formatDateTime } from "@/lib/format";
@@ -18,7 +20,9 @@ const STATUS_COLORS: Record<string, "emerald" | "gray" | "yellow" | "red"> = {
 };
 
 export default async function BankaPage() {
-  const [connections, transactions, reviewCount] = await Promise.all([
+  const session = await getSession();
+  const canConfigure = hasFinancePermission(session.role, "CONFIGURE");
+  const [connections, transactions, reviewPayments] = await Promise.all([
     prisma.bankConnection.findMany({
       include: { accounts: { where: { isActive: true } } },
       orderBy: { createdAt: "asc" },
@@ -37,13 +41,19 @@ export default async function BankaPage() {
         },
       },
     }),
-    prisma.payment.count({
-      where: {
-        direction: "INCOMING",
-        allocations: { none: { reversedAt: null } },
+    prisma.payment.findMany({
+      select: {
+        amountCents: true,
+        allocations: { where: { reversedAt: null }, select: { amountCents: true } },
       },
     }),
   ]);
+  const reviewCount = reviewPayments.filter(
+    (payment) =>
+      payment.amountCents -
+        payment.allocations.reduce((sum, allocation) => sum + allocation.amountCents, 0) >
+      0,
+  ).length;
 
   const flagOn = tatraPremiumEnabled();
   const tatra = connections.find((c) => c.provider === "TATRA_PREMIUM");
@@ -82,15 +92,15 @@ export default async function BankaPage() {
             <div className="text-sm text-stone-500">
               <p>
                 Premium API čaká na aktiváciu v banke — beží dočasný import výpisov. Po aktivácii
-                nastav v Railway variables:
+                {canConfigure ? " nastav v Railway variables:" : " ho môže zapnúť finančný administrátor."}
               </p>
-              <ul className="mt-2 list-inside list-disc text-xs text-stone-400">
+              {canConfigure && <ul className="mt-2 list-inside list-disc text-xs text-stone-400">
                 {tatraPremiumMissingConfig().map((v) => (
                   <li key={v}>
                     <code className="rounded bg-stone-100 px-1">{v}</code>
                   </li>
                 ))}
-              </ul>
+              </ul>}
             </div>
           ) : (
             <>
@@ -105,10 +115,17 @@ export default async function BankaPage() {
                   <div className="rounded-[10px] bg-red-50 px-3 py-2 text-xs text-red-700">{tatra.lastError}</div>
                 )}
               </dl>
-              <SyncButton disabled={!tatra} />
+              {canConfigure ? (
+                <SyncButton disabled={!tatra} />
+              ) : (
+                <p className="text-xs text-stone-400">
+                  Ručnú synchronizáciu môže spustiť finančný administrátor.
+                </p>
+              )}
               {!tatra && (
                 <p className="mt-2 text-xs text-stone-400">
-                  Spojenie sa založí pri prvej autorizácii cez banku (consent flow po aktivácii API).
+                  Pred zapnutím treba dokončiť consent flow a kontraktné testy v oficiálnom
+                  Tatra sandboxe.
                 </p>
               )}
               <p className="mt-3 text-xs text-stone-400">
@@ -132,7 +149,17 @@ export default async function BankaPage() {
           ) : null}
         </div>
 
-        <StatementImport parseAction={parseStatementAction} />
+        {canConfigure ? (
+          <StatementImport parseAction={parseStatementAction} />
+        ) : (
+          <div className="rounded-[14px] border border-stone-200 bg-white p-5">
+            <h2 className="font-semibold text-stone-900">Import bankového výpisu</h2>
+            <p className="mt-2 text-sm text-stone-500">
+              Výpis môže importovať finančný administrátor. Transakcie a manuálne párovanie
+              zostávajú dostupné podľa vašej roly.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className={card}>
@@ -173,9 +200,7 @@ export default async function BankaPage() {
                       {txn.remittanceInfo ?? "—"}
                     </td>
                     <td className="px-[18px] py-2.5">
-                      {txn.amountCents < 0 ? (
-                        <span className="text-xs text-stone-400">odchádzajúca</span>
-                      ) : allocations.length > 0 ? (
+                      {allocations.length > 0 ? (
                         <span className="flex flex-wrap gap-1">
                           {allocations.map((allocation) => (
                             <Link

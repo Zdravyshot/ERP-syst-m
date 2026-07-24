@@ -40,6 +40,24 @@ describe("parseStatementCsv", () => {
   it("chýbajúce povinné stĺpce → zrozumiteľná chyba", () => {
     expect(() => parseStatementCsv("Foo;Bar\n1;2", "SK11")).toThrow(/povinné stĺpce/);
   });
+
+  it("neplatný kalendárny dátum a suma s viac ako dvoma desatinnými miestami preskočí", () => {
+    const malformed = [
+      "Dátum;Suma;Mena",
+      "31.2.2026;10,00;EUR",
+      "22.7.2026;10,999;EUR",
+    ].join("\n");
+    const result = parseStatementCsv(malformed, "SK1111000000002612345678");
+    expect(result.transactions).toHaveLength(0);
+    expect(result.skippedLines).toBe(2);
+  });
+
+  it("nepodporovanú menu neoznačí nesprávne ako EUR", () => {
+    const czk = "Dátum;Suma;Mena\n22.7.2026;100,00;CZK";
+    const result = parseStatementCsv(czk, "SK1111000000002612345678");
+    expect(result.transactions).toHaveLength(0);
+    expect(result.skippedLines).toBe(1);
+  });
 });
 
 describe("tokenCrypto", () => {

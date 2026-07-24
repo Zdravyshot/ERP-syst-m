@@ -35,17 +35,27 @@ function findColumn(headers: string[], candidates: string[]): number {
 
 function parseAmountCents(value: string): number | null {
   const cleaned = value.replace(/\s/g, "").replace(/€|EUR/gi, "").replace(",", ".");
-  if (!cleaned) return null;
+  if (!/^[+-]?\d+(?:\.\d{1,2})?$/.test(cleaned)) return null;
   const parsed = Number.parseFloat(cleaned);
   return Number.isNaN(parsed) ? null : Math.round(parsed * 100);
 }
 
 function parseDate(value: string): Date | null {
   const trimmed = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return new Date(trimmed.slice(0, 10));
-  const match = trimmed.match(/^(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4})/);
-  if (match) return new Date(`${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`);
-  return null;
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T|\s)/);
+  const localMatch = trimmed.match(/^(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4})(?:$|\s)/);
+  const parts = isoMatch
+    ? { year: Number(isoMatch[1]), month: Number(isoMatch[2]), day: Number(isoMatch[3]) }
+    : localMatch
+      ? { year: Number(localMatch[3]), month: Number(localMatch[2]), day: Number(localMatch[1]) }
+      : null;
+  if (!parts) return null;
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  return date.getUTCFullYear() === parts.year &&
+    date.getUTCMonth() === parts.month - 1 &&
+    date.getUTCDate() === parts.day
+    ? date
+    : null;
 }
 
 function splitCsvLine(line: string, delimiter: string): string[] {
@@ -107,6 +117,7 @@ export function parseStatementCsv(text: string, providerAccountId: string): Stat
   const col = {
     date: findColumn(headers, ["datum zauctovania", "datum", "date"]),
     amount: findColumn(headers, ["suma", "amount", "obrat"]),
+    currency: findColumn(headers, ["mena", "currency"]),
     vs: findColumn(headers, ["vs", "variabilny symbol"]),
     ks: findColumn(headers, ["ks", "konstantny symbol"]),
     ss: findColumn(headers, ["ss", "specificky symbol"]),
@@ -135,6 +146,11 @@ export function parseStatementCsv(text: string, providerAccountId: string): Stat
     }
 
     const pick = (idx: number) => (idx >= 0 ? row[idx]?.trim() || undefined : undefined);
+    const currency = pick(col.currency)?.toUpperCase();
+    if (currency && currency !== "EUR") {
+      skippedLines += 1;
+      continue;
+    }
     const isoDate = bookingDate.toISOString().slice(0, 10);
     const base = {
       bookingDate: isoDate,

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { runBankSync } from "@/lib/finance/banking/sync";
 import { tatraPremiumEnabled } from "@/lib/finance/banking/flags";
 
@@ -12,7 +13,10 @@ export async function POST(request: NextRequest) {
   if (!secret || secret.length < 32) {
     return NextResponse.json({ error: "CRON_SECRET nie je nakonfigurovaný" }, { status: 503 });
   }
-  if (request.headers.get("x-cron-secret") !== secret) {
+  const suppliedSecret = request.headers.get("x-cron-secret") ?? "";
+  const expected = Buffer.from(secret);
+  const supplied = Buffer.from(suppliedSecret);
+  if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
     return NextResponse.json({ error: "Neplatný cron secret" }, { status: 401 });
   }
 
@@ -21,5 +25,9 @@ export async function POST(request: NextRequest) {
   }
 
   const summaries = await runBankSync();
-  return NextResponse.json({ status: "done", connections: summaries });
+  const failed = summaries.some((summary) => summary.error);
+  return NextResponse.json(
+    { status: failed ? "failed" : "done", connections: summaries },
+    { status: failed ? 502 : 200 },
+  );
 }

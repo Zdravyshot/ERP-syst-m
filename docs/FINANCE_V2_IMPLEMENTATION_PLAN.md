@@ -11,7 +11,10 @@
 - [x] A1 doménový workflow, go-live gate a testy — [PR #10](https://github.com/Org-Zdravy-shot/ERP-syst-m/pull/10)
 - [x] A2 finančné obrazovky, dobropisy a účtovnícky cutover
 - [ ] B dokumenty, e-mail a Omega migrácia
-- [ ] C Tatra banka, párovanie a reporty
+- [ ] C Tatra banka, párovanie a reporty — C1 v [PR #13](https://github.com/Org-Zdravy-shot/ERP-syst-m/pull/13):
+  import výpisu, platby, párovanie, cash-flow a cron; produkčný Tatra provider
+  zostáva vypnutý do aktivácie, doplnenia consent flow a overenia kontraktu v
+  oficiálnom sandboxe
 
 ## 1. Cieľ a hranice prvej etapy
 

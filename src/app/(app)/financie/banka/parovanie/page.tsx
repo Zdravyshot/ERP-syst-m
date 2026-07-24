@@ -9,18 +9,14 @@ import { AllocateForm, ReverseAllocationButton } from "./AllocateForm";
 export default async function ParovaniePage() {
   const [unmatchedPayments, openInvoices, recentAllocations] = await Promise.all([
     prisma.payment.findMany({
-      where: { direction: "INCOMING" },
       include: { allocations: { where: { reversedAt: null } } },
       orderBy: { paidAt: "desc" },
       take: 100,
     }),
     prisma.invoice.findMany({
       where: {
-        direction: "VYDANA",
         documentType: "INVOICE",
-        documentStatus: { not: "CANCELLED" },
-        // legacy UHRADENA = historicky uhradené bez alokácií — nie sú otvorené
-        status: { notIn: ["STORNO", "UHRADENA"] },
+        documentStatus: "ISSUED",
       },
       include: {
         client: { select: { name: true } },
@@ -43,7 +39,8 @@ export default async function ParovaniePage() {
     .map((inv) => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
-      clientName: inv.client?.name ?? "—",
+      direction: inv.direction,
+      clientName: inv.client?.name ?? inv.supplierName ?? "—",
       variableSymbol: inv.variableSymbol,
       outstandingCents:
         inv.totalGrossCents - inv.paymentAllocations.reduce((sum, a) => sum + a.amountCents, 0),
@@ -62,7 +59,7 @@ export default async function ParovaniePage() {
     <>
       <PageHeader
         title="Manuálna kontrola platieb"
-        subtitle="Prijaté platby, ktoré sa nepodarilo automaticky spárovať — čiastočné, nadmerné a nejednoznačné úhrady"
+        subtitle="Nealokované prijaté aj odchádzajúce platby — čiastočné, nadmerné a nejednoznačné úhrady"
       >
         <Link href="/financie/banka" className={btnSecondary}>
           ← Banka
@@ -78,7 +75,8 @@ export default async function ParovaniePage() {
 
         {pending.map((payment) => {
           const paymentVs = normalizeVs(payment.variableSymbol);
-          const invoiceOptions = open.map((inv) => ({
+          const expectedDirection = payment.direction === "INCOMING" ? "VYDANA" : "PRIJATA";
+          const invoiceOptions = open.filter((inv) => inv.direction === expectedDirection).map((inv) => ({
             id: inv.id,
             label: `${inv.invoiceNumber ?? "koncept"} · ${inv.clientName}`,
             outstandingEur: formatCents(inv.outstandingCents),
@@ -93,7 +91,8 @@ export default async function ParovaniePage() {
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <span className="font-display text-lg font-bold text-stone-950">
-                    +{formatCents(payment.unallocatedCents)}
+                    {payment.direction === "INCOMING" ? "+" : "−"}
+                    {formatCents(payment.unallocatedCents)}
                   </span>
                   {payment.unallocatedCents !== payment.amountCents && (
                     <span className="ml-2 text-xs text-stone-400">

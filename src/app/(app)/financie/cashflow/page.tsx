@@ -22,9 +22,7 @@ export default async function CashflowPage() {
       where: {
         direction: "VYDANA",
         documentType: "INVOICE",
-        documentStatus: { not: "CANCELLED" },
-        // legacy UHRADENA = historicky uhradené bez alokácií — nie sú otvorené
-        status: { notIn: ["STORNO", "UHRADENA"] },
+        documentStatus: "ISSUED",
       },
       include: {
         client: { select: { id: true, name: true } },
@@ -32,14 +30,17 @@ export default async function CashflowPage() {
       },
       orderBy: { dueDate: "asc" },
     }),
-    prisma.invoice.aggregate({
+    prisma.invoice.findMany({
       where: {
         direction: "PRIJATA",
-        documentStatus: { not: "CANCELLED" },
-        status: { in: ["VYSTAVENA"] },
-        dueDate: { lte: in30Days },
+        documentType: "INVOICE",
+        documentStatus: "ISSUED",
+        dueDate: { gte: now, lte: in30Days },
       },
-      _sum: { totalGrossCents: true },
+      select: {
+        totalGrossCents: true,
+        paymentAllocations: { where: { reversedAt: null }, select: { amountCents: true } },
+      },
     }),
   ]);
 
@@ -85,6 +86,16 @@ export default async function CashflowPage() {
     else aging.d30plus += inv.outstandingCents;
   }
   const totalUnpaid = unpaid.reduce((sum, inv) => sum + inv.outstandingCents, 0);
+  const dueSoonCents = dueSoon.reduce(
+    (sum, invoice) =>
+      sum +
+      Math.max(
+        0,
+        invoice.totalGrossCents -
+          invoice.paymentAllocations.reduce((allocated, allocation) => allocated + allocation.amountCents, 0),
+      ),
+    0,
+  );
 
   const agingCards = [
     { label: "Do splatnosti", value: aging.current, tone: "text-stone-950" },
@@ -122,7 +133,7 @@ export default async function CashflowPage() {
             Očakávané výdavky (30 dní)
           </div>
           <div className="mt-2 font-display text-[22px] font-bold text-stone-950">
-            {formatCents(dueSoon._sum.totalGrossCents ?? 0)}
+            {formatCents(dueSoonCents)}
           </div>
           <div className="mt-1 text-xs text-stone-400">neuhradené prijaté so splatnosťou do 30 dní</div>
         </div>

@@ -1,5 +1,7 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import type { InvoicePaymentStatus } from "@/lib/finance/contracts";
+import { calculatePaymentStatus } from "@/lib/finance/domain";
 import { classifyPayment, type InvoiceCandidate, type MatchOutcome } from "./match";
 
 type Tx = Prisma.TransactionClient;
@@ -22,7 +24,10 @@ export async function invoiceOutstandingCents(tx: Tx, invoiceId: string): Promis
   return invoice.totalGrossCents - (allocated._sum.amountCents ?? 0);
 }
 
-export async function recomputePaymentStatus(tx: Tx, invoiceId: string): Promise<string> {
+export async function recomputePaymentStatus(
+  tx: Tx,
+  invoiceId: string,
+): Promise<InvoicePaymentStatus> {
   const invoice = await tx.invoice.findUniqueOrThrow({
     where: { id: invoiceId },
     select: { totalGrossCents: true },
@@ -31,22 +36,29 @@ export async function recomputePaymentStatus(tx: Tx, invoiceId: string): Promise
     where: { invoiceId, reversedAt: null },
     _sum: { amountCents: true },
   });
-  const sum = allocated._sum.amountCents ?? 0;
-  const paymentStatus =
-    sum === 0
-      ? "UNPAID"
-      : sum < invoice.totalGrossCents
-        ? "PARTIALLY_PAID"
-        : sum === invoice.totalGrossCents
-          ? "PAID"
-          : "OVERPAID";
+  return calculatePaymentStatus(invoice.totalGrossCents, allocated._sum.amountCents ?? 0);
+}
 
-  // Legacy pole `status` drží UI v1 v synchróne, kým ho A1 nenahradí.
-  await tx.invoice.update({
-    where: { id: invoiceId },
-    data: { status: paymentStatus === "PAID" ? "UHRADENA" : "VYSTAVENA" },
-  });
-  return paymentStatus;
+async function lockPayment(tx: Tx, paymentId: string): Promise<void> {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`SELECT "id" FROM "Payment" WHERE "id" = ${paymentId} FOR UPDATE`,
+  );
+  if (rows.length === 0) throw new Error("Platba neexistuje.");
+}
+
+async function lockInvoice(tx: Tx, invoiceId: string): Promise<string> {
+  const rows = await tx.$queryRaw<Array<{ documentStatus: string }>>(
+    Prisma.sql`SELECT "documentStatus" FROM "Invoice" WHERE "id" = ${invoiceId} FOR UPDATE`,
+  );
+  const invoice = rows[0];
+  if (!invoice) throw new Error("Faktúra neexistuje.");
+  return invoice.documentStatus;
+}
+
+function snapshotIban(value: Prisma.JsonValue | null): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const iban = (value as { iban?: unknown }).iban;
+  return typeof iban === "string" && iban.trim() ? iban : null;
 }
 
 async function audit(
@@ -75,17 +87,15 @@ export async function paymentUnallocatedCents(tx: Tx, paymentId: string): Promis
 }
 
 /**
- * Kandidátske faktúry pre prichádzajúcu platbu: vydané, finalizované, neuhradené.
- * Legacy stav UHRADENA (historické úhrady bez alokácií, pred v2 backfillom v A1)
- * sa rešpektuje — takéto faktúry nie sú kandidátmi na párovanie.
+ * Kandidátske faktúry pre prichádzajúcu platbu: vydané, finalizované,
+ * s kladným zostatkom vypočítaným výhradne z aktívnych alokácií.
  */
 async function openInvoiceCandidates(tx: Tx): Promise<InvoiceCandidate[]> {
   const invoices = await tx.invoice.findMany({
     where: {
       direction: "VYDANA",
       documentType: "INVOICE",
-      documentStatus: { not: "CANCELLED" },
-      status: { notIn: ["STORNO", "UHRADENA"] },
+      documentStatus: "ISSUED",
     },
     select: {
       id: true,
@@ -93,7 +103,8 @@ async function openInvoiceCandidates(tx: Tx): Promise<InvoiceCandidate[]> {
       currency: true,
       dueDate: true,
       totalGrossCents: true,
-      client: { select: { id: true } },
+      counterpartySnapshot: true,
+      client: { select: { iban: true } },
       paymentAllocations: {
         where: { reversedAt: null },
         select: { amountCents: true },
@@ -105,7 +116,7 @@ async function openInvoiceCandidates(tx: Tx): Promise<InvoiceCandidate[]> {
     .map((inv) => ({
       invoiceId: inv.id,
       variableSymbol: inv.variableSymbol,
-      clientIban: null as string | null, // IBAN klienta doplní A1 v Client modeli; pravidlo 2 zatiaľ z snapshotov nižšie
+      clientIban: snapshotIban(inv.counterpartySnapshot) ?? inv.client?.iban ?? null,
       outstandingCents:
         inv.totalGrossCents - inv.paymentAllocations.reduce((sum, a) => sum + a.amountCents, 0),
       currency: inv.currency,
@@ -128,6 +139,7 @@ export interface AutoMatchResult {
  */
 export async function autoMatchPayment(paymentId: string): Promise<AutoMatchResult> {
   return prisma.$transaction(async (tx) => {
+    await lockPayment(tx, paymentId);
     const payment = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
 
     const unallocated = await paymentUnallocatedCents(tx, paymentId);
@@ -151,6 +163,18 @@ export async function autoMatchPayment(paymentId: string): Promise<AutoMatchResu
     );
 
     if (outcome.type === "AUTO") {
+      const documentStatus = await lockInvoice(tx, outcome.invoiceId);
+      const outstandingCents = await invoiceOutstandingCents(tx, outcome.invoiceId);
+      if (documentStatus !== "ISSUED" || outstandingCents !== unallocated) {
+        return {
+          paymentId,
+          outcome: {
+            type: "MANUAL",
+            reason: "Faktúra sa počas párovania zmenila — vyžaduje kontrolu.",
+            candidateInvoiceIds: [outcome.invoiceId],
+          },
+        };
+      }
       await tx.paymentAllocation.create({
         data: {
           paymentId,
@@ -180,6 +204,11 @@ export async function allocatePayment(
   await prisma.$transaction(async (tx) => {
     if (amountCents <= 0) throw new Error("Alokovaná suma musí byť kladná.");
 
+    await lockPayment(tx, paymentId);
+    const payment = await tx.payment.findUniqueOrThrow({
+      where: { id: paymentId },
+      select: { direction: true, currency: true },
+    });
     const unallocated = await paymentUnallocatedCents(tx, paymentId);
     if (amountCents > unallocated) {
       throw new Error(
@@ -187,12 +216,23 @@ export async function allocatePayment(
       );
     }
 
+    const documentStatus = await lockInvoice(tx, invoiceId);
     const invoice = await tx.invoice.findUniqueOrThrow({
       where: { id: invoiceId },
-      select: { documentStatus: true, direction: true },
+      select: { direction: true, currency: true },
     });
-    if (invoice.documentStatus === "CANCELLED") throw new Error("Faktúra je stornovaná.");
-    if (invoice.direction !== "VYDANA") throw new Error("Alokovať možno len na vydané faktúry.");
+    if (documentStatus !== "ISSUED") throw new Error("Alokovať možno len na finalizovanú faktúru.");
+    const expectedDirection = payment.direction === "INCOMING" ? "VYDANA" : "PRIJATA";
+    if (invoice.direction !== expectedDirection) {
+      throw new Error(
+        payment.direction === "INCOMING"
+          ? "Prijatú platbu možno alokovať len na vydanú faktúru."
+          : "Odchádzajúcu platbu možno alokovať len na prijatú faktúru.",
+      );
+    }
+    if (invoice.currency !== payment.currency) {
+      throw new Error("Mena platby sa nezhoduje s menou faktúry.");
+    }
 
     const existing = await tx.paymentAllocation.findUnique({
       where: { paymentId_invoiceId: { paymentId, invoiceId } },

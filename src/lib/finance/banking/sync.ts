@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { BankTransactionResult } from "@/lib/finance/contracts";
 import { autoMatchPayment } from "@/lib/finance/matching/engine";
@@ -22,6 +23,22 @@ export interface SyncSummary {
   error?: string;
 }
 
+export type TransactionPersistenceDecision =
+  | "CREATE_TRANSACTION"
+  | "PROMOTE_TO_BOOKED"
+  | "CREATE_MISSING_PAYMENT"
+  | "DUPLICATE";
+
+export function decideTransactionPersistence(
+  existing: { status: string; hasPayment: boolean } | null,
+  incomingStatus: "PENDING" | "BOOKED",
+): TransactionPersistenceDecision {
+  if (!existing) return "CREATE_TRANSACTION";
+  if (existing.status === "PENDING" && incomingStatus === "BOOKED") return "PROMOTE_TO_BOOKED";
+  if (incomingStatus === "BOOKED" && !existing.hasPayment) return "CREATE_MISSING_PAYMENT";
+  return "DUPLICATE";
+}
+
 /** Zapíše stránku transakcií, vytvorí platby a spáruje ich. */
 export async function persistTransactions(
   connectionId: string,
@@ -33,34 +50,38 @@ export async function persistTransactions(
   const newPaymentIds: string[] = [];
 
   for (const txn of transactions) {
-    const result = await prisma.$transaction(async (tx) => {
-      const account = await tx.bankAccount.findFirst({
-        where: {
-          bankConnectionId: connectionId,
-          OR: [{ providerAccountId: txn.providerAccountId }, { iban: txn.providerAccountId }],
-        },
-        select: { id: true },
-      });
-      if (!account) {
-        throw new Error(`Bankový účet pre providerAccountId ${txn.providerAccountId} neexistuje.`);
-      }
-
-      const existing = await tx.bankTransaction.findUnique({
-        where: {
-          bankConnectionId_providerTransactionId: {
+    let result:
+      | { created: false }
+      | { created: true; paymentId: string | null };
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        const account = await tx.bankAccount.findFirst({
+          where: {
             bankConnectionId: connectionId,
-            providerTransactionId: txn.providerTransactionId,
+            OR: [{ providerAccountId: txn.providerAccountId }, { iban: txn.providerAccountId }],
           },
-        },
-        select: { id: true },
-      });
-      if (existing) return { created: false as const };
+          select: { id: true },
+        });
+        if (!account) {
+          throw new Error(`Bankový účet pre providerAccountId ${txn.providerAccountId} neexistuje.`);
+        }
 
-      const bankTransaction = await tx.bankTransaction.create({
-        data: {
-          bankConnectionId: connectionId,
-          bankAccountId: account.id,
-          providerTransactionId: txn.providerTransactionId,
+        const existing = await tx.bankTransaction.findUnique({
+          where: {
+            bankConnectionId_providerTransactionId: {
+              bankConnectionId: connectionId,
+              providerTransactionId: txn.providerTransactionId,
+            },
+          },
+          select: { id: true, status: true, payment: { select: { id: true } } },
+        });
+        const decision = decideTransactionPersistence(
+          existing ? { status: existing.status, hasPayment: existing.payment !== null } : null,
+          txn.status,
+        );
+        if (decision === "DUPLICATE") return { created: false as const };
+
+        const transactionData = {
           status: txn.status,
           bookingDate: txn.bookingDate,
           valueDate: txn.valueDate ?? null,
@@ -72,29 +93,58 @@ export async function persistTransactions(
           constantSymbol: txn.constantSymbol ?? null,
           specificSymbol: txn.specificSymbol ?? null,
           remittanceInfo: txn.remittanceInfo ?? null,
-          rawPayload: txn.rawPayload === undefined ? undefined : JSON.parse(JSON.stringify(txn.rawPayload)),
-        },
-      });
+          rawPayload:
+            txn.rawPayload === undefined ? undefined : JSON.parse(JSON.stringify(txn.rawPayload)),
+        };
 
-      // Platba vzniká len pre zaúčtované transakcie; PENDING sa doplní pri ďalšom syncu.
-      if (txn.status !== "BOOKED") return { created: true as const, paymentId: null };
+        const bankTransaction =
+          decision === "CREATE_TRANSACTION"
+            ? await tx.bankTransaction.create({
+                data: {
+                  bankConnectionId: connectionId,
+                  bankAccountId: account.id,
+                  providerTransactionId: txn.providerTransactionId,
+                  ...transactionData,
+                },
+              })
+            : decision === "PROMOTE_TO_BOOKED"
+              ? await tx.bankTransaction.update({
+                  where: { id: existing!.id },
+                  data: { bankAccountId: account.id, ...transactionData },
+                })
+              : { id: existing!.id };
 
-      const payment = await tx.payment.create({
-        data: {
-          direction: txn.amountCents >= 0 ? "INCOMING" : "OUTGOING",
-          source: paymentSource,
-          amountCents: Math.abs(txn.amountCents),
-          currency: txn.currency,
-          paidAt: txn.valueDate ?? txn.bookingDate,
-          reference: txn.remittanceInfo ?? null,
-          variableSymbol: txn.variableSymbol ?? null,
-          counterpartyName: txn.counterpartyName ?? null,
-          counterpartyIban: txn.counterpartyIban ?? null,
-          bankTransactionId: bankTransaction.id,
-        },
+        // Platba vzniká len pre zaúčtované transakcie. Opakovaný sync zároveň
+        // opraví starší BOOKED záznam bez platby a povýši PENDING → BOOKED.
+        if (txn.status !== "BOOKED") return { created: true as const, paymentId: null };
+
+        const paymentId =
+          existing?.payment?.id ??
+          (
+            await tx.payment.create({
+              data: {
+                direction: txn.amountCents >= 0 ? "INCOMING" : "OUTGOING",
+                source: paymentSource,
+                amountCents: Math.abs(txn.amountCents),
+                currency: txn.currency,
+                paidAt: txn.valueDate ?? txn.bookingDate,
+                reference: txn.remittanceInfo ?? null,
+                variableSymbol: txn.variableSymbol ?? null,
+                counterpartyName: txn.counterpartyName ?? null,
+                counterpartyIban: txn.counterpartyIban ?? null,
+                bankTransactionId: bankTransaction.id,
+              },
+            })
+          ).id;
+        return { created: true as const, paymentId };
       });
-      return { created: true as const, paymentId: payment.id };
-    });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        duplicates += 1;
+        continue;
+      }
+      throw error;
+    }
 
     if (!result.created) duplicates += 1;
     else {

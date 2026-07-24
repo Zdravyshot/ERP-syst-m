@@ -2,11 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth";
 import { importStatementTransactions, runBankSync } from "@/lib/finance/banking/sync";
 import { tatraPremiumEnabled } from "@/lib/finance/banking/flags";
 import { parseStatementCsv } from "@/lib/finance/banking/statement";
 import { allocatePayment, reverseAllocation } from "@/lib/finance/matching/engine";
+import { requireFinancePermission } from "@/lib/finance/permissions";
 
 export interface BankFormState {
   error?: string;
@@ -15,7 +15,7 @@ export interface BankFormState {
 
 /** Ručné spustenie synchronizácie z UI (rovnaká cesta ako cron). */
 export async function triggerBankSync(_prev: BankFormState, _formData: FormData): Promise<BankFormState> {
-  await requireUser();
+  await requireFinancePermission("CONFIGURE");
   if (!tatraPremiumEnabled()) {
     return { error: "Tatra Premium API je vypnuté — chýba aktivácia/feature flag." };
   }
@@ -61,7 +61,10 @@ export async function parseStatementAction(
     }
   | { error: string }
 > {
-  await requireUser();
+  await requireFinancePermission("CONFIGURE");
+  if (text.length > 5_000_000) {
+    return { error: "Výpis je príliš veľký. Maximálna veľkosť je 5 MB." };
+  }
   try {
     const result = parseStatementCsv(text, iban.replace(/\s/g, "").toUpperCase());
     return {
@@ -83,9 +86,12 @@ const statementRowSchema = z.object({
   providerTransactionId: z.string().min(1),
   providerAccountId: z.string().min(1),
   status: z.enum(["PENDING", "BOOKED"]),
-  bookingDate: z.string().min(1),
-  valueDate: z.string().optional(),
-  amountCents: z.number().int(),
+  bookingDate: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "Neplatný dátum zaúčtovania."),
+  valueDate: z
+    .string()
+    .refine((value) => !Number.isNaN(Date.parse(value)), "Neplatný dátum valuty.")
+    .optional(),
+  amountCents: z.number().int().safe().refine((value) => value !== 0, "Suma transakcie nesmie byť nula."),
   currency: z.literal("EUR"),
   counterpartyName: z.string().optional(),
   counterpartyIban: z.string().optional(),
@@ -97,7 +103,7 @@ const statementRowSchema = z.object({
 
 /** Dočasný import bankového výpisu — riadky parsuje klient (preview), zapisuje server. */
 export async function importStatement(_prev: BankFormState, formData: FormData): Promise<BankFormState> {
-  await requireUser();
+  await requireFinancePermission("CONFIGURE");
 
   const iban = String(formData.get("iban") ?? "").replace(/\s/g, "").toUpperCase();
   if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]{10,30}$/.test(iban)) {
@@ -133,7 +139,7 @@ export async function importStatement(_prev: BankFormState, formData: FormData):
 
 /** Manuálna alokácia platby na faktúru (aj čiastočná). */
 export async function allocatePaymentAction(_prev: BankFormState, formData: FormData): Promise<BankFormState> {
-  const user = await requireUser();
+  const user = await requireFinancePermission("ALLOCATE_PAYMENT");
 
   const paymentId = String(formData.get("paymentId") ?? "");
   const invoiceId = String(formData.get("invoiceId") ?? "");
@@ -157,7 +163,7 @@ export async function allocatePaymentAction(_prev: BankFormState, formData: Form
 }
 
 export async function reverseAllocationAction(_prev: BankFormState, formData: FormData): Promise<BankFormState> {
-  const user = await requireUser();
+  const user = await requireFinancePermission("ALLOCATE_PAYMENT");
   const allocationId = String(formData.get("allocationId") ?? "");
   const reason = String(formData.get("reason") ?? "").trim() || "Manuálne zrušenie";
 

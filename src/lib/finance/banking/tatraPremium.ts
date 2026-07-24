@@ -8,10 +8,10 @@ import type {
 } from "@/lib/finance/contracts";
 
 /**
- * TatraPremiumApiProvider — implementácia BankProvider nad Premium API
- * (PSD2 AISP štýl). Presné cesty/polia sa doladia podľa sandbox dokumentácie
- * pri aktivácii; mapovanie odpovedí je izolované v map* funkciách nižšie,
- * aby úprava znamenala zmenu jedného miesta.
+ * TatraPremiumApiProvider — adaptér BankProvider pripravený na Premium API.
+ * Presné cesty, consent flow a polia sa musia overiť podľa zmluvnej verzie
+ * kontraktu v oficiálnom sandboxe. Dovtedy zostáva provider vypnutý feature
+ * flagom; mapovanie odpovedí je izolované v map* funkciách nižšie.
  *
  * Provider NIKDY nesiaha do databázy — refresh token dostane cez callbacky,
  * takže šifrované uloženie rieši sync vrstva (sync.ts).
@@ -58,6 +58,22 @@ interface SyncCursor {
 
 const PAGE_SIZE = 100;
 
+function asEurCurrency(currency: unknown): Currency {
+  const value = String(currency ?? "EUR").toUpperCase();
+  if (value !== "EUR") {
+    throw new BankProviderError("PROTOCOL", `Nepodporovaná mena ${value}; prvá etapa podporuje iba EUR.`);
+  }
+  return "EUR";
+}
+
+function asValidDate(value: unknown, field: string): Date {
+  const date = new Date(String(value ?? ""));
+  if (Number.isNaN(date.getTime())) {
+    throw new BankProviderError("PROTOCOL", `Neplatný dátum ${field} v odpovedi banky.`);
+  }
+  return date;
+}
+
 function asCents(amount: unknown): number {
   const value = typeof amount === "string" ? Number.parseFloat(amount) : (amount as number);
   if (typeof value !== "number" || Number.isNaN(value)) {
@@ -68,12 +84,17 @@ function asCents(amount: unknown): number {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function mapAccount(raw: any): BankAccountResult {
+  const providerAccountId = String(raw.accountId ?? raw.resourceId ?? raw.id ?? "").trim();
+  const iban = String(raw.iban ?? raw.accountReference?.iban ?? "").replace(/\s/g, "").toUpperCase();
+  if (!providerAccountId || !iban) {
+    throw new BankProviderError("PROTOCOL", "Účet v odpovedi banky nemá identifikátor alebo IBAN.");
+  }
   return {
-    providerAccountId: String(raw.accountId ?? raw.resourceId ?? raw.id),
+    providerAccountId,
     name: String(raw.name ?? raw.product ?? "Účet"),
-    iban: String(raw.iban ?? raw.accountReference?.iban ?? ""),
+    iban,
     bic: raw.bic ? String(raw.bic) : undefined,
-    currency: (raw.currency ?? "EUR") as Currency,
+    currency: asEurCurrency(raw.currency),
   };
 }
 
@@ -82,21 +103,25 @@ function mapBalance(raw: any, providerAccountId: string): BankBalanceResult {
     providerAccountId,
     availableCents: asCents(raw.available?.amount ?? raw.interimAvailable?.amount ?? 0),
     bookedCents: asCents(raw.booked?.amount ?? raw.closingBooked?.amount ?? 0),
-    currency: (raw.currency ?? "EUR") as Currency,
+    currency: asEurCurrency(raw.currency),
     measuredAt: new Date(),
   };
 }
 
 function mapTransaction(raw: any, providerAccountId: string): BankTransactionResult {
   const symbols = raw.symbols ?? {};
+  const providerTransactionId = String(raw.transactionId ?? raw.entryReference ?? raw.id ?? "").trim();
+  if (!providerTransactionId) {
+    throw new BankProviderError("PROTOCOL", "Transakcia v odpovedi banky nemá stabilný identifikátor.");
+  }
   return {
-    providerTransactionId: String(raw.transactionId ?? raw.entryReference ?? raw.id),
+    providerTransactionId,
     providerAccountId,
     status: (raw.status ?? "BOOKED") === "PENDING" ? "PENDING" : "BOOKED",
-    bookingDate: new Date(raw.bookingDate ?? raw.valueDate),
-    valueDate: raw.valueDate ? new Date(raw.valueDate) : undefined,
+    bookingDate: asValidDate(raw.bookingDate ?? raw.valueDate, "bookingDate"),
+    valueDate: raw.valueDate ? asValidDate(raw.valueDate, "valueDate") : undefined,
     amountCents: asCents(raw.transactionAmount?.amount ?? raw.amount),
-    currency: (raw.transactionAmount?.currency ?? raw.currency ?? "EUR") as Currency,
+    currency: asEurCurrency(raw.transactionAmount?.currency ?? raw.currency),
     counterpartyName: raw.creditorName ?? raw.debtorName ?? undefined,
     counterpartyIban: raw.creditorAccount?.iban ?? raw.debtorAccount?.iban ?? undefined,
     variableSymbol: symbols.variableSymbol ?? raw.variableSymbol ?? undefined,
@@ -142,6 +167,9 @@ export class TatraPremiumApiProvider implements BankProvider {
     }
 
     const token = (await response.json()) as TokenResponse;
+    if (!token.access_token || !Number.isFinite(token.expires_in) || token.expires_in <= 0) {
+      throw new BankProviderError("PROTOCOL", "Odpoveď obnovy tokenu nemá platný token alebo expiráciu.");
+    }
     this.accessToken = token.access_token;
     this.accessTokenExpiresAt = Date.now() + Math.max(0, (token.expires_in - 30) * 1000);
 

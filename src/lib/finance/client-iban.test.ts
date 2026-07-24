@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import { clientSchema } from "@/lib/zod-schemas";
 
 const validClient = {
@@ -14,7 +13,7 @@ test("IBAN klienta sa pred uložením normalizuje", () => {
     iban: "sk31 1200 0000 1987 4263 7541",
   });
 
-  assert.equal(parsed.iban, "SK3112000000198742637541");
+  expect(parsed.iban).toBe("SK3112000000198742637541");
 });
 
 test("neplatný formát IBAN klienta sa odmietne", () => {
@@ -23,5 +22,5 @@ test("neplatný formát IBAN klienta sa odmietne", () => {
     iban: "SK123",
   });
 
-  assert.equal(parsed.success, false);
+  expect(parsed.success).toBe(false);
 });

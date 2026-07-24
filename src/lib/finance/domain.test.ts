@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import {
   assertDocumentTransition,
   assertCreditWithinOriginal,
@@ -23,17 +22,14 @@ test("DPH sa zaokrúhľuje po jednotlivých položkách", () => {
     ],
   });
 
-  assert.deepEqual(
-    result.lines.map((line) => line.totalVatCents),
-    [0, 0, 85],
-  );
-  assert.equal(result.totalNetCents, 373);
-  assert.equal(result.totalVatCents, 85);
-  assert.equal(result.totalGrossCents, 458);
+  expect(result.lines.map((line) => line.totalVatCents)).toEqual([0, 0, 85]);
+  expect(result.totalNetCents).toBe(373);
+  expect(result.totalVatCents).toBe(85);
+  expect(result.totalGrossCents).toBe(458);
 });
 
 test("oslobodená položka nemôže niesť nenulovú DPH", () => {
-  assert.throws(
+  expect(
     () =>
       calculateInvoice({
         currency: "EUR",
@@ -48,50 +44,49 @@ test("oslobodená položka nemôže niesť nenulovú DPH", () => {
           },
         ],
       }),
-    (error) => error instanceof FinanceDomainError && error.code === "INVALID_LINE",
-  );
+  ).toThrowError(expect.objectContaining({ code: "INVALID_LINE" }));
 });
 
 test("stav úhrady sa počíta výhradne zo sumy aktívnych alokácií", () => {
-  assert.equal(calculatePaymentStatus(1_000, 0), "UNPAID");
-  assert.equal(calculatePaymentStatus(1_000, 400), "PARTIALLY_PAID");
-  assert.equal(calculatePaymentStatus(1_000, 1_000), "PAID");
-  assert.equal(calculatePaymentStatus(1_000, 1_001), "OVERPAID");
+  expect(calculatePaymentStatus(1_000, 0)).toBe("UNPAID");
+  expect(calculatePaymentStatus(1_000, 400)).toBe("PARTIALLY_PAID");
+  expect(calculatePaymentStatus(1_000, 1_000)).toBe("PAID");
+  expect(calculatePaymentStatus(1_000, 1_001)).toBe("OVERPAID");
 });
 
 test("povolené prechody chránia nemennosť finalizovaného dokladu", () => {
-  assert.equal(canTransitionDocument("DRAFT", "ISSUED"), true);
-  assert.equal(canTransitionDocument("ISSUED", "DRAFT"), false);
-  assert.equal(canTransitionDocument("CANCELLED", "ISSUED"), false);
-  assert.throws(() => assertDocumentTransition("ISSUED", "DRAFT"), FinanceDomainError);
+  expect(canTransitionDocument("DRAFT", "ISSUED")).toBe(true);
+  expect(canTransitionDocument("ISSUED", "DRAFT")).toBe(false);
+  expect(canTransitionDocument("CANCELLED", "ISSUED")).toBe(false);
+  expect(() => assertDocumentTransition("ISSUED", "DRAFT")).toThrow(FinanceDomainError);
 });
 
 test("časová platnosť je na oboch hraniciach inkluzívna", () => {
   const from = new Date("2026-07-01T00:00:00.000Z");
   const to = new Date("2026-07-31T23:59:59.999Z");
-  assert.equal(isDateWithinValidity(from, from, to), true);
-  assert.equal(isDateWithinValidity(to, from, to), true);
-  assert.equal(isDateWithinValidity(new Date("2026-08-01T00:00:00.000Z"), from, to), false);
+  expect(isDateWithinValidity(from, from, to)).toBe(true);
+  expect(isDateWithinValidity(to, from, to)).toBe(true);
+  expect(isDateWithinValidity(new Date("2026-08-01T00:00:00.000Z"), from, to)).toBe(false);
 });
 
 test("oficiálny rad vydaných faktúr pokračuje číslom 2026009", () => {
-  assert.equal(formatDocumentNumber("VYDANA", 2026, 9), "2026009");
-  assert.equal(formatDocumentNumber("PRIJATA", 2026, 9), "PF2026009");
+  expect(formatDocumentNumber("VYDANA", 2026, 9)).toBe("2026009");
+  expect(formatDocumentNumber("PRIJATA", 2026, 9)).toBe("PF2026009");
 });
 
 test("finančný operátor nemôže finalizovať ani meniť daňové nastavenia", () => {
-  assert.equal(hasFinancePermission("FINANCE_OPERATOR", "VIEW"), true);
-  assert.equal(hasFinancePermission("FINANCE_OPERATOR", "CREATE_DRAFT"), true);
-  assert.equal(hasFinancePermission("FINANCE_OPERATOR", "FINALIZE"), false);
-  assert.equal(hasFinancePermission("FINANCE_OPERATOR", "CONFIGURE"), false);
-  assert.equal(hasFinancePermission("admin", "FINALIZE"), true);
-  assert.equal(hasFinancePermission("user", "VIEW"), false);
+  expect(hasFinancePermission("FINANCE_OPERATOR", "VIEW")).toBe(true);
+  expect(hasFinancePermission("FINANCE_OPERATOR", "CREATE_DRAFT")).toBe(true);
+  expect(hasFinancePermission("FINANCE_OPERATOR", "FINALIZE")).toBe(false);
+  expect(hasFinancePermission("FINANCE_OPERATOR", "CONFIGURE")).toBe(false);
+  expect(hasFinancePermission("admin", "FINALIZE")).toBe(true);
+  expect(hasFinancePermission("user", "VIEW")).toBe(false);
 });
 
 test("produkčná infraštruktúra je fail-closed", () => {
   const blocked = evaluateProductionIssuingInfrastructure({ NODE_ENV: "production" });
-  assert.equal(blocked.ready, false);
-  assert.ok(blocked.blockers.length >= 4);
+  expect(blocked.ready).toBe(false);
+  expect(blocked.blockers.length).toBeGreaterThanOrEqual(4);
 
   const ready = evaluateProductionIssuingInfrastructure({
     NODE_ENV: "production",
@@ -100,13 +95,12 @@ test("produkčná infraštruktúra je fail-closed", () => {
     FINANCE_MAIL_PROVIDER: "transactional-provider",
     FINANCE_MAIL_FROM: "info@zdravyshot.sk",
   });
-  assert.deepEqual(ready, { ready: true, blockers: [] });
+  expect(ready).toEqual({ ready: true, blockers: [] });
 });
 
 test("dobropisy nemôžu prekročiť sumu pôvodnej faktúry", () => {
-  assert.doesNotThrow(() => assertCreditWithinOriginal(10_000, 4_000, 6_000));
-  assert.throws(
+  expect(() => assertCreditWithinOriginal(10_000, 4_000, 6_000)).not.toThrow();
+  expect(
     () => assertCreditWithinOriginal(10_000, 4_000, 6_001),
-    (error) => error instanceof FinanceDomainError && error.code === "INVALID_MONEY",
-  );
+  ).toThrowError(expect.objectContaining({ code: "INVALID_MONEY" }));
 });

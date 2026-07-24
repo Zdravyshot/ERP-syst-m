@@ -116,4 +116,17 @@ describe("TatraPremiumApiProvider — stránkovanie syncu", () => {
     const { provider } = makeProvider(fetchMock as unknown as typeof fetch);
     await expect(provider.syncTransactions("nie-json")).rejects.toBeInstanceOf(BankProviderError);
   });
+
+  it("nepodporovanú menu nepretypuje na EUR", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, TOKEN_OK))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          accounts: [{ accountId: "acc-czk", iban: "CZ6508000000192000145399", currency: "CZK" }],
+        }),
+      );
+    const { provider } = makeProvider(fetchMock as unknown as typeof fetch);
+    await expect(provider.listAccounts()).rejects.toMatchObject({ kind: "PROTOCOL" });
+  });
 });

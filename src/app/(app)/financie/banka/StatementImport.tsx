@@ -38,6 +38,10 @@ export function StatementImport({
       setParseError("Najprv zadajte IBAN účtu, ku ktorému výpis patrí.");
       return;
     }
+    if (file.size > 5_000_000) {
+      setParseError("Výpis je príliš veľký. Maximálna veľkosť je 5 MB.");
+      return;
+    }
     const text = await file.text();
     const result = await parseAction(text, iban.trim());
     if ("error" in result) {

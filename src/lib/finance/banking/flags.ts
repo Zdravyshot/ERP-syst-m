@@ -11,7 +11,7 @@ export function tatraPremiumEnabled(): boolean {
     !!process.env.TATRA_API_BASE &&
     !!process.env.TATRA_CLIENT_ID &&
     !!process.env.TATRA_CLIENT_SECRET &&
-    !!process.env.BANK_TOKEN_KEY
+    /^[0-9a-fA-F]{64}$/.test(process.env.BANK_TOKEN_KEY ?? "")
   );
 }
 
@@ -21,6 +21,8 @@ export function tatraPremiumMissingConfig(): string[] {
   if (!process.env.TATRA_API_BASE) missing.push("TATRA_API_BASE");
   if (!process.env.TATRA_CLIENT_ID) missing.push("TATRA_CLIENT_ID");
   if (!process.env.TATRA_CLIENT_SECRET) missing.push("TATRA_CLIENT_SECRET");
-  if (!process.env.BANK_TOKEN_KEY) missing.push("BANK_TOKEN_KEY");
+  if (!/^[0-9a-fA-F]{64}$/.test(process.env.BANK_TOKEN_KEY ?? "")) {
+    missing.push("BANK_TOKEN_KEY (64 hex znakov)");
+  }
   return missing;
 }
