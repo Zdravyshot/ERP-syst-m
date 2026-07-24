@@ -77,7 +77,7 @@ export function Sidebar({ userName, logoutAction }: { userName: string; logoutAc
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col bg-stone-950">
+    <aside className="flex w-60 shrink-0 flex-col bg-stone-950 print:hidden">
       <div className="px-5 pb-1 pt-[22px]">
         <Image
           src="/logo.png"
