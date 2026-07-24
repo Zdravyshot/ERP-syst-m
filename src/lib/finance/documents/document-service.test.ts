@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { test, expect } from "vitest";
 import type { StoredDocument } from "../contracts";
 import { DefaultDocumentService } from "./document-service";
 import { DocumentIntegrityError } from "./errors";
@@ -75,13 +74,10 @@ test("služba uloží obsahovo adresovaný nemenný dokument idempotentne", asyn
   const second = await service.generateAndStoreInvoicePdf("invoice-test-1");
   const expectedHash = sha256(renderer.bytes);
 
-  assert.equal(first.id, second.id);
-  assert.equal(first.sha256, expectedHash);
-  assert.equal(
-    first.objectKey,
-    `finance/invoices/invoice-test-1/${expectedHash}.pdf`,
-  );
-  assert.equal(await service.verifyHash(first.id), true);
+  expect(first.id).toBe(second.id);
+  expect(first.sha256).toBe(expectedHash);
+  expect(first.objectKey).toBe(`finance/invoices/invoice-test-1/${expectedHash}.pdf`);
+  expect(await service.verifyHash(first.id)).toBe(true);
 });
 
 test("autorizovaný download overí hash a vytvorí audit", async () => {
@@ -97,16 +93,13 @@ test("autorizovaný download overí hash a vytvorí audit", async () => {
   );
   const bytes = new Uint8Array(await new Response(download.body).arrayBuffer());
 
-  assert.deepEqual(bytes, renderer.bytes);
-  assert.deepEqual(repository.audits, [
-    { documentId: document.id, actorId: "finance-admin-1" },
-  ]);
+  expect(bytes).toEqual(renderer.bytes);
+  expect(repository.audits).toEqual([{ documentId: document.id, actorId: "finance-admin-1" }]);
 
   storage.overwriteForTest(document.objectKey, new TextEncoder().encode("tampered"));
-  assert.equal(await service.verifyHash(document.id), false);
-  await assert.rejects(
+  expect(await service.verifyHash(document.id)).toBe(false);
+  await expect(
     service.getAuthorizedDownload(document.id, "finance-admin-1"),
-    DocumentIntegrityError,
-  );
-  assert.equal(repository.audits.length, 1);
+  ).rejects.toBeInstanceOf(DocumentIntegrityError);
+  expect(repository.audits.length).toBe(1);
 });
