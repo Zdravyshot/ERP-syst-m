@@ -61,6 +61,7 @@ function partyFromClient(client: InvoiceWithDetails["client"]): PartySnapshot | 
     ...(client.icDph ? { icDph: client.icDph } : {}),
     ...(client.email ? { email: client.email } : {}),
     ...(client.phone ? { phone: client.phone } : {}),
+    ...(client.iban ? { iban: client.iban } : {}),
     ...(client.street ? { street: client.street } : {}),
     ...(client.city ? { city: client.city } : {}),
     ...(client.zip ? { zip: client.zip } : {}),

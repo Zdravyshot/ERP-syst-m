@@ -34,6 +34,7 @@ model Client {
   icDph     String? // IČ DPH
   email     String?
   phone     String?
+  iban      String?
   street    String?
   city      String?
   zip       String?
@@ -46,6 +47,8 @@ model Client {
   orders        Order[]
   invoices      Invoice[]
   subscriptions Subscription[]
+
+  @@index([iban])
 }
 
 // ---------- Firemný a daňový profil ----------

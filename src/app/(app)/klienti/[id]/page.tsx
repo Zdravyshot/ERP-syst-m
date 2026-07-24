@@ -84,6 +84,7 @@ export default async function KlientDetailPage({ params }: { params: Promise<{ i
               {client.type === "B2B" && infoRow("IČ DPH", client.icDph)}
               {infoRow("E-mail", client.email)}
               {infoRow("Telefón", client.phone)}
+              {canViewFinance && infoRow("IBAN", client.iban)}
               {infoRow(
                 "Adresa",
                 [client.street, [client.zip, client.city].filter(Boolean).join(" ")].filter(Boolean).join(", ") || null,

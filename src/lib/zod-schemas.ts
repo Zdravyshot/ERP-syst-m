@@ -75,6 +75,11 @@ export const clientSchema = z.object({
   icDph: z.string().optional(),
   email: z.string().email("Neplatný e-mail").optional().or(z.literal("")),
   phone: z.string().optional(),
+  iban: z
+    .string()
+    .transform((value) => value.replace(/\s+/g, "").toUpperCase())
+    .refine((value) => /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(value), "Neplatný formát IBAN")
+    .optional(),
   street: z.string().optional(),
   city: z.string().optional(),
   zip: z.string().optional(),
