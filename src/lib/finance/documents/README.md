@@ -1,0 +1,54 @@
+# Financie v2 — dokumenty
+
+Implementácia developera B pre nemenné fakturačné PDF a privátne dokumenty.
+
+## Vlastnosti
+
+- slovenská faktúra alebo dobropis s rozpisom DPH;
+- platobné údaje a slovenský PAY by square QR kód;
+- slovenská diakritika cez lokálne Noto Sans TTF fonty;
+- SHA-256 nad finálnymi PDF bajtmi;
+- obsahovo adresovaný objektový kľúč
+  `finance/invoices/<invoiceId>/<sha256>.pdf`;
+- zápis do privátneho S3-kompatibilného Railway Bucketu s
+  `If-None-Match: *`;
+- autorizovaný download cez ERP bez verejnej bucket URL;
+- kontrola SHA-256 pred každým downloadom;
+- audit `DOCUMENT_DOWNLOADED`.
+
+PDF je možné vytvoriť iba pre vydaný a finalizovaný doklad s nemennými
+snapshotmi dodávateľa, odberateľa, dane a položiek.
+
+## API
+
+- `POST /api/financie/faktury/:id/dokumenty` — vygeneruje a uloží PDF;
+- `GET /api/financie/dokumenty/:id` — overí integritu, zapíše audit a vráti
+  súbor ako `attachment`.
+
+Obe route vyžadujú aktuálneho databázového používateľa s rolou `admin`,
+`FINANCE_ADMIN` alebo `FINANCE_OPERATOR`.
+
+## Railway Bucket
+
+Nastavte referenčné premenné:
+
+```text
+DOCUMENT_BUCKET_NAME
+DOCUMENT_BUCKET_ENDPOINT
+DOCUMENT_BUCKET_REGION
+DOCUMENT_BUCKET_ACCESS_KEY_ID
+DOCUMENT_BUCKET_SECRET_ACCESS_KEY
+```
+
+Bucket musí zostať privátny. Prístupové údaje patria iba do Railway variables,
+nikdy do Gitu.
+
+## Testy
+
+```bash
+npm test
+npm run typecheck
+```
+
+Testy pokrývajú PAY by square údaje, deterministické PDF, viacstranové
+doklady, idempotentné uloženie, hash, tampering a audit downloadu.

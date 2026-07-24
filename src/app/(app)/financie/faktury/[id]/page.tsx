@@ -16,6 +16,7 @@ import {
 } from "@/lib/zod-schemas";
 import { calculatePaymentStatus } from "@/lib/finance/domain";
 import { cancelInvoice, createCreditNoteFromInvoice, finalizeInvoice } from "../../_actions";
+import { InvoiceDocuments } from "./InvoiceDocuments";
 import { InvoiceWorkflowActions } from "./InvoiceStatusActions";
 
 export default async function FakturaDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -32,6 +33,18 @@ export default async function FakturaDetailPage({ params }: { params: Promise<{ 
       creditNotes: {
         orderBy: { issueDate: "desc" },
         select: { id: true, invoiceNumber: true, documentStatus: true, totalGrossCents: true },
+      },
+      documents: {
+        where: { archivedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          type: true,
+          fileName: true,
+          byteSize: true,
+          sha256: true,
+          createdAt: true,
+        },
       },
     },
   });
@@ -157,6 +170,25 @@ export default async function FakturaDetailPage({ params }: { params: Promise<{ 
               </div>
             )}
           </section>
+
+          <InvoiceDocuments
+            invoiceId={invoice.id}
+            canGenerate={
+              invoice.direction === "VYDANA" &&
+              invoice.documentStatus === "ISSUED" &&
+              Boolean(
+                invoice.invoiceNumber &&
+                  invoice.finalizedAt &&
+                  invoice.issuerSnapshot &&
+                  invoice.counterpartySnapshot &&
+                  invoice.taxSnapshot,
+              )
+            }
+            documents={invoice.documents.map((document) => ({
+              ...document,
+              createdAt: document.createdAt.toISOString(),
+            }))}
+          />
 
           {invoice.documentStatus !== "CANCELLED" && (
             <section className="rounded-[14px] border border-stone-200 bg-white p-5 print:hidden">
