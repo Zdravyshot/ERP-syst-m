@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { hasFinancePermission } from "@/lib/finance/permissions";
 import { PageHeader } from "@/components/PageHeader";
-import { Badge, ORDER_STATUS_COLORS, INVOICE_STATUS_COLORS } from "@/components/Badge";
+import { Badge, ORDER_STATUS_COLORS, INVOICE_DOCUMENT_STATUS_COLORS } from "@/components/Badge";
 import { formatCents, formatDate, formatDateTime } from "@/lib/format";
-import { computeTotals, INVOICE_STATUS_LABELS } from "@/lib/invoicing";
-import { orderStatusLabels, orderChannelLabels } from "@/lib/zod-schemas";
+import { computeTotals } from "@/lib/invoicing";
+import { invoiceDocumentStatusLabels, orderStatusLabels, orderChannelLabels } from "@/lib/zod-schemas";
 import { ORDER_STATUS_TRANSITIONS, EDITABLE_ORDER_STATUSES, SUBSCRIPTION_FREQUENCY_LABELS } from "../konstanty";
 import { setOrderStatus } from "../_actions";
 import { issueInvoiceFromOrder } from "../../financie/_actions";
@@ -14,6 +16,8 @@ import { IssueInvoiceButton } from "./IssueInvoiceButton";
 
 export default async function ObjednavkaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await getSession();
+  const canViewFinance = hasFinancePermission(session.role, "VIEW");
 
   const order = await prisma.order.findUnique({
     where: { id },
@@ -107,11 +111,16 @@ export default async function ObjednavkaDetailPage({ params }: { params: Promise
             )}
           </section>
 
-          <section className="rounded-[14px] border border-stone-200 bg-white p-5">
+          {canViewFinance && <section className="rounded-[14px] border border-stone-200 bg-white p-5">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="font-semibold text-stone-900">Faktúry</h2>
               {order.status !== "ZRUSENA" &&
-                !order.invoices.some((i) => i.direction === "VYDANA" && i.status !== "STORNO") && (
+                !order.invoices.some(
+                  (i) =>
+                    i.direction === "VYDANA" &&
+                    i.documentType === "INVOICE" &&
+                    i.documentStatus !== "CANCELLED",
+                ) && (
                   <IssueInvoiceButton action={issueInvoiceFromOrder.bind(null, order.id)} />
                 )}
             </div>
@@ -122,19 +131,19 @@ export default async function ObjednavkaDetailPage({ params }: { params: Promise
                 {order.invoices.map((invoice) => (
                   <li key={invoice.id} className="flex items-center justify-between text-sm">
                     <Link href={`/financie/faktury/${invoice.id}`} className="font-medium text-stone-900 hover:underline">
-                      {invoice.invoiceNumber}
+                      {invoice.invoiceNumber ?? "Koncept faktúry"}
                     </Link>
                     <span className="flex items-center gap-2">
                       <span className="text-stone-600">{formatCents(invoice.totalGrossCents)}</span>
-                      <Badge color={INVOICE_STATUS_COLORS[invoice.status]}>
-                        {INVOICE_STATUS_LABELS[invoice.status] ?? invoice.status}
+                      <Badge color={INVOICE_DOCUMENT_STATUS_COLORS[invoice.documentStatus]}>
+                        {invoiceDocumentStatusLabels[invoice.documentStatus] ?? invoice.documentStatus}
                       </Badge>
                     </span>
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </section>}
         </div>
 
         <div className="space-y-6 lg:col-span-2">

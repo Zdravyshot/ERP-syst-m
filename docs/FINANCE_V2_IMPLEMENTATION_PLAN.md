@@ -4,6 +4,15 @@
 > Omegy. Ak sa zmení spoločná schéma alebo kontrakt, najprv sa upraví tento
 > dokument a samostatný bootstrap PR developera A.
 
+## Stav implementácie
+
+- [x] Koordinačný plán — [PR #8](https://github.com/Org-Zdravy-shot/ERP-syst-m/pull/8)
+- [x] A0 spoločná schéma, migrácia a kontrakty — [PR #9](https://github.com/Org-Zdravy-shot/ERP-syst-m/pull/9)
+- [x] A1 doménový workflow, go-live gate a testy — [PR #10](https://github.com/Org-Zdravy-shot/ERP-syst-m/pull/10)
+- [ ] A2 finančné obrazovky, dobropisy a účtovnícky cutover
+- [ ] B dokumenty, e-mail a Omega migrácia
+- [ ] C Tatra banka, párovanie a reporty
+
 ## 1. Cieľ a hranice prvej etapy
 
 ERP bude jediný pracovný systém pre:

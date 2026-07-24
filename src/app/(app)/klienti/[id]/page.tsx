@@ -1,16 +1,25 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { hasFinancePermission } from "@/lib/finance/permissions";
 import { PageHeader } from "@/components/PageHeader";
-import { Badge, CLIENT_TYPE_COLORS, ORDER_STATUS_COLORS, INVOICE_STATUS_COLORS } from "@/components/Badge";
+import {
+  Badge,
+  CLIENT_TYPE_COLORS,
+  ORDER_STATUS_COLORS,
+  INVOICE_DOCUMENT_STATUS_COLORS,
+} from "@/components/Badge";
 import { formatCents, formatDate } from "@/lib/format";
-import { computeTotals, INVOICE_STATUS_LABELS, INVOICE_SOURCE_LABELS } from "@/lib/invoicing";
-import { orderStatusLabels, orderChannelLabels } from "@/lib/zod-schemas";
+import { computeTotals, INVOICE_SOURCE_LABELS } from "@/lib/invoicing";
+import { invoiceDocumentStatusLabels, orderStatusLabels, orderChannelLabels } from "@/lib/zod-schemas";
 import { toggleClientActive } from "../_actions";
 import { SUBSCRIPTION_FREQUENCY_LABELS } from "@/app/(app)/objednavky/konstanty";
 
 export default async function KlientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await getSession();
+  const canViewFinance = hasFinancePermission(session.role, "VIEW");
 
   const client = await prisma.client.findUnique({
     where: { id },
@@ -24,8 +33,8 @@ export default async function KlientDetailPage({ params }: { params: Promise<{ i
 
   const toggleAction = toggleClientActive.bind(null, client.id);
   const totalRevenueCents = client.invoices
-    .filter((i) => i.direction === "VYDANA" && i.status !== "STORNO")
-    .reduce((sum, i) => sum + i.totalGrossCents, 0);
+    .filter((i) => i.direction === "VYDANA" && i.documentStatus === "ISSUED")
+    .reduce((sum, i) => sum + i.totalGrossCents * (i.documentType === "CREDIT_NOTE" ? -1 : 1), 0);
 
   const infoRow = (label: string, value: React.ReactNode) => (
     <div className="flex justify-between gap-4 py-1.5">
@@ -80,7 +89,8 @@ export default async function KlientDetailPage({ params }: { params: Promise<{ i
                 [client.street, [client.zip, client.city].filter(Boolean).join(" ")].filter(Boolean).join(", ") || null,
               )}
               {infoRow("Klientom od", formatDate(client.createdAt))}
-              {infoRow("Tržby spolu (s DPH)", <span className="font-semibold">{formatCents(totalRevenueCents)}</span>)}
+              {canViewFinance &&
+                infoRow("Tržby spolu (s DPH)", <span className="font-semibold">{formatCents(totalRevenueCents)}</span>)}
             </dl>
             {client.note && (
               <p className="mt-3 rounded-[10px] bg-amber-50 px-3 py-2 text-sm text-amber-900">{client.note}</p>
@@ -152,7 +162,7 @@ export default async function KlientDetailPage({ params }: { params: Promise<{ i
             </table>
           </section>
 
-          <section className="rounded-[14px] border border-stone-200 bg-white">
+          {canViewFinance && <section className="rounded-[14px] border border-stone-200 bg-white">
             <h2 className="border-b border-stone-100 px-5 py-3 font-semibold text-stone-900">
               Faktúry ({client.invoices.length})
             </h2>
@@ -173,19 +183,23 @@ export default async function KlientDetailPage({ params }: { params: Promise<{ i
                 )}
                 {client.invoices.map((invoice) => (
                   <tr key={invoice.id} className="border-b border-stone-50 last:border-0 hover:bg-stone-50">
-                    <td className="px-5 py-2.5 font-medium text-stone-900">{invoice.invoiceNumber}</td>
+                    <td className="px-5 py-2.5 font-medium text-stone-900">
+                      {invoice.invoiceNumber ?? "Koncept"}
+                    </td>
                     <td className="px-5 py-2.5 text-stone-600">{INVOICE_SOURCE_LABELS[invoice.source] ?? invoice.source}</td>
                     <td className="px-5 py-2.5 text-stone-600">{formatDate(invoice.issueDate)}</td>
                     <td className="px-5 py-2.5 text-stone-600">{formatDate(invoice.dueDate)}</td>
                     <td className="px-5 py-2.5">
-                      <Badge color={INVOICE_STATUS_COLORS[invoice.status]}>{INVOICE_STATUS_LABELS[invoice.status] ?? invoice.status}</Badge>
+                      <Badge color={INVOICE_DOCUMENT_STATUS_COLORS[invoice.documentStatus]}>
+                        {invoiceDocumentStatusLabels[invoice.documentStatus] ?? invoice.documentStatus}
+                      </Badge>
                     </td>
                     <td className="px-5 py-2.5 text-right font-medium text-stone-900">{formatCents(invoice.totalGrossCents)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </section>
+          </section>}
         </div>
       </div>
     </>

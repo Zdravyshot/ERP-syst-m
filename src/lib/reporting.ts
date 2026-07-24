@@ -11,14 +11,14 @@ function monthKey(date: Date): string {
 
 /**
  * Skutočnosť po mesiacoch — počíta sa vždy live, nič sa nekešuje.
- * Tržby = vydané faktúry (VYDANA, nie STORNO) podľa issueDate + eKasa podľa saleDate.
+ * Tržby = finalizované vydané faktúry mínus dobropisy podľa issueDate + eKasa podľa saleDate.
  * Výroba = producedQty hotových (DONE) šarží podľa productionDate.
  */
 export async function getMonthlyActualsMap(): Promise<Map<string, MonthlyActuals>> {
   const [invoices, ekasa, batches] = await Promise.all([
     prisma.invoice.findMany({
-      where: { direction: "VYDANA", status: { not: "STORNO" } },
-      select: { issueDate: true, totalGrossCents: true },
+      where: { direction: "VYDANA", documentStatus: "ISSUED" },
+      select: { issueDate: true, documentType: true, totalGrossCents: true },
     }),
     prisma.ekasaSale.findMany({ select: { saleDate: true, totalGrossCents: true } }),
     prisma.productionBatch.findMany({
@@ -37,7 +37,10 @@ export async function getMonthlyActualsMap(): Promise<Map<string, MonthlyActuals
     return entry;
   };
 
-  for (const inv of invoices) bucket(monthKey(inv.issueDate)).revenueCents += inv.totalGrossCents;
+  for (const inv of invoices) {
+    bucket(monthKey(inv.issueDate)).revenueCents +=
+      inv.totalGrossCents * (inv.documentType === "CREDIT_NOTE" ? -1 : 1);
+  }
   for (const sale of ekasa) bucket(monthKey(sale.saleDate)).revenueCents += sale.totalGrossCents;
   for (const b of batches) bucket(monthKey(b.productionDate)).productionUnits += b.producedQty;
 

@@ -5,6 +5,8 @@ import { formatCents, formatDate, formatQty } from "@/lib/format";
 import { getLowStockItems } from "@/lib/stock";
 import { actualsFor, fulfillmentPct, getMonthlyActualsMap } from "@/lib/reporting";
 import { orderStatusLabels } from "@/lib/zod-schemas";
+import { getSession } from "@/lib/auth";
+import { hasFinancePermission } from "@/lib/finance/permissions";
 
 function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -34,12 +36,14 @@ function SectionCard({ title, href, children }: { title: string; href: string; c
 }
 
 export default async function DashboardPage() {
+  const session = await getSession();
+  const canViewFinance = hasFinancePermission(session.role, "VIEW");
   const now = new Date();
   const in7Days = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
 
   const [actualsMap, lowStock, openOrdersCount, recentOrders, expiringBatches, currentPlan] =
     await Promise.all([
-      getMonthlyActualsMap(),
+      canViewFinance ? getMonthlyActualsMap() : Promise.resolve(new Map()),
       getLowStockItems(),
       prisma.order.count({ where: { status: { in: ["NOVA", "POTVRDENA", "VO_VYROBE"] } } }),
       prisma.order.findMany({
@@ -53,9 +57,11 @@ export default async function DashboardPage() {
         take: 5,
         include: { product: { select: { name: true } } },
       }),
-      prisma.monthlyPlan.findUnique({
-        where: { year_month: { year: now.getFullYear(), month: now.getMonth() + 1 } },
-      }),
+      canViewFinance
+        ? prisma.monthlyPlan.findUnique({
+            where: { year_month: { year: now.getFullYear(), month: now.getMonth() + 1 } },
+          })
+        : Promise.resolve(null),
     ]);
 
   const actuals = actualsFor(actualsMap, now.getFullYear(), now.getMonth() + 1);
@@ -69,22 +75,26 @@ export default async function DashboardPage() {
       <PageHeader title="Prehľad" subtitle="Kľúčové ukazovatele firmy Zdravý shot" />
 
       <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          label="Tržby tento mesiac"
-          value={formatCents(actuals.revenueCents)}
-          hint="vydané faktúry + eKasa"
-        />
+        {canViewFinance && (
+          <KpiCard
+            label="Tržby tento mesiac"
+            value={formatCents(actuals.revenueCents)}
+            hint="vydané faktúry + eKasa"
+          />
+        )}
         <KpiCard label="Otvorené objednávky" value={String(openOrdersCount)} hint="nové, potvrdené, vo výrobe" />
         <KpiCard
           label="Nízke zásoby"
           value={String(lowStockCount)}
           hint={lowStockCount > 0 ? "položiek pod minimom" : "všetko nad minimom"}
         />
-        <KpiCard
-          label="Plnenie plánu"
-          value={planPct !== null ? `${planPct} %` : "—"}
-          hint={currentPlan ? `cieľ ${formatCents(currentPlan.targetRevenueCents)}` : "plán nie je nastavený"}
-        />
+        {canViewFinance && (
+          <KpiCard
+            label="Plnenie plánu"
+            value={planPct !== null ? `${planPct} %` : "—"}
+            hint={currentPlan ? `cieľ ${formatCents(currentPlan.targetRevenueCents)}` : "plán nie je nastavený"}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">

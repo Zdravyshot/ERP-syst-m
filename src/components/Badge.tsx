@@ -40,6 +40,19 @@ export const INVOICE_STATUS_COLORS: Record<string, BadgeColor> = {
   STORNO: "gray",
 };
 
+export const INVOICE_DOCUMENT_STATUS_COLORS: Record<string, BadgeColor> = {
+  DRAFT: "yellow",
+  ISSUED: "blue",
+  CANCELLED: "gray",
+};
+
+export const INVOICE_PAYMENT_STATUS_COLORS: Record<string, BadgeColor> = {
+  UNPAID: "yellow",
+  PARTIALLY_PAID: "yellow",
+  PAID: "emerald",
+  OVERPAID: "red",
+};
+
 export const CLIENT_TYPE_COLORS: Record<string, BadgeColor> = {
   B2B: "indigo",
   B2C: "teal",
