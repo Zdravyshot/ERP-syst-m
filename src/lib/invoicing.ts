@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { formatDocumentNumber } from "./finance/domain";
 
 type Tx = Prisma.TransactionClient;
 
@@ -16,17 +17,7 @@ export async function nextNumber(tx: Tx, kind: "VYDANA" | "PRIJATA" | "OBJ" | "S
     create: { id: counterId, lastNumber: 1 },
     update: { lastNumber: { increment: 1 } },
   });
-  const n = counter.lastNumber;
-  switch (kind) {
-    case "VYDANA":
-      return `FA${year}${String(n).padStart(3, "0")}`;
-    case "PRIJATA":
-      return `PF${year}${String(n).padStart(3, "0")}`;
-    case "OBJ":
-      return `OBJ${year}-${String(n).padStart(4, "0")}`;
-    case "SARZA":
-      return `S${year}-${String(n).padStart(4, "0")}`;
-  }
+  return formatDocumentNumber(kind, year, counter.lastNumber);
 }
 
 export interface LineInput {

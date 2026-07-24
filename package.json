@@ -8,6 +8,7 @@
     "postbuild": "mkdir -p .next/standalone/.next && cp -R public .next/standalone/ && cp -R .next/static .next/standalone/.next/",
     "start": "node .next/standalone/server.js",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/lib/finance/*.test.ts",
     "db:deploy": "prisma migrate deploy",
     "backup:production": "sh scripts/backup-production.sh",
     "admin:production": "sh scripts/create-production-admin.sh"
