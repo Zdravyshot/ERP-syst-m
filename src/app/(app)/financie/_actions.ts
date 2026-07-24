@@ -196,6 +196,40 @@ export async function cancelInvoice(
   }
 }
 
+export async function createCreditNoteFromInvoice(
+  invoiceId: string,
+  _prev: InvoiceFormState,
+  formData: FormData,
+): Promise<InvoiceFormState> {
+  const user = await requireFinancePermission("CREATE_DRAFT");
+  const issueDate = formDate(formData, "issueDate");
+  const dueDate = formDate(formData, "dueDate");
+  const deliveryDate = formDate(formData, "deliveryDate");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!issueDate || !dueDate || !deliveryDate) return { error: "Vyplňte všetky dátumy dobropisu." };
+  if (!reason) return { error: "Dôvod dobropisu je povinný." };
+
+  let creditNoteId: string;
+  try {
+    const creditNote = await invoiceService.createCreditNote({
+      originalInvoiceId: invoiceId,
+      issueDate,
+      dueDate,
+      deliveryDate,
+      reason,
+      actorId: user.userId,
+    });
+    creditNoteId = creditNote.id;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Dobropis sa nepodarilo vytvoriť." };
+  }
+
+  revalidatePath("/financie");
+  revalidatePath("/financie/faktury");
+  revalidatePath(`/financie/faktury/${invoiceId}`);
+  redirect(`/financie/faktury/${creditNoteId}`);
+}
+
 // ---------- SuperFaktúra import ----------
 // Klient parsuje CSV v prehliadači (preview) a posiela už namapované riadky.
 
