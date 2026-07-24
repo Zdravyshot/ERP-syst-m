@@ -15,7 +15,7 @@ import {
   invoicePaymentStatusLabels,
 } from "@/lib/zod-schemas";
 import { calculatePaymentStatus } from "@/lib/finance/domain";
-import { cancelInvoice, finalizeInvoice } from "../../_actions";
+import { cancelInvoice, createCreditNoteFromInvoice, finalizeInvoice } from "../../_actions";
 import { InvoiceWorkflowActions } from "./InvoiceStatusActions";
 
 export default async function FakturaDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -28,11 +28,17 @@ export default async function FakturaDetailPage({ params }: { params: Promise<{ 
       items: true,
       paymentAllocations: { where: { reversedAt: null } },
       order: { select: { id: true, orderNumber: true } },
+      originalInvoice: { select: { id: true, invoiceNumber: true } },
+      creditNotes: {
+        orderBy: { issueDate: "desc" },
+        select: { id: true, invoiceNumber: true, documentStatus: true, totalGrossCents: true },
+      },
     },
   });
   if (!invoice) notFound();
 
   const isIssued = invoice.direction === "VYDANA";
+  const isCreditNote = invoice.documentType === "CREDIT_NOTE";
   const snapshotValue = isIssued ? invoice.counterpartySnapshot : invoice.issuerSnapshot;
   const parsedSnapshot = financePartySnapshotSchema.safeParse(snapshotValue);
   const partner = parsedSnapshot.success ? parsedSnapshot.data : null;
@@ -43,6 +49,8 @@ export default async function FakturaDetailPage({ params }: { params: Promise<{ 
     (paymentStatus === "UNPAID" || paymentStatus === "PARTIALLY_PAID") &&
     invoice.dueDate.getTime() < Date.now();
   const counterparty = partner?.name ?? invoice.client?.name ?? invoice.supplierName ?? "—";
+  const today = new Date().toISOString().slice(0, 10);
+  const in14Days = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const infoRow = (label: string, value: React.ReactNode) => (
     <div className="flex justify-between gap-4 py-1.5">
@@ -55,8 +63,8 @@ export default async function FakturaDetailPage({ params }: { params: Promise<{ 
     <>
       <div className="print:hidden">
         <PageHeader
-          title={invoice.invoiceNumber ?? "Koncept faktúry"}
-          subtitle={`${isIssued ? "Vydaná faktúra" : "Prijatá faktúra"} · ${INVOICE_SOURCE_LABELS[invoice.source] ?? invoice.source}`}
+          title={invoice.invoiceNumber ?? (isCreditNote ? "Koncept dobropisu" : "Koncept faktúry")}
+          subtitle={`${isCreditNote ? "Dobropis" : isIssued ? "Vydaná faktúra" : "Prijatá faktúra"} · ${INVOICE_SOURCE_LABELS[invoice.source] ?? invoice.source}`}
         >
           <Link
             href="/financie/faktury"
@@ -117,11 +125,36 @@ export default async function FakturaDetailPage({ params }: { params: Promise<{ 
                     {invoice.order.orderNumber}
                   </Link>,
                 )}
+              {invoice.originalInvoice &&
+                infoRow(
+                  "Pôvodná faktúra",
+                  <Link
+                    href={`/financie/faktury/${invoice.originalInvoice.id}`}
+                    className="text-stone-950 hover:underline"
+                  >
+                    {invoice.originalInvoice.invoiceNumber ?? "Koncept"}
+                  </Link>,
+                )}
             </dl>
             {invoice.note && (
               <p className="mt-3 rounded-[10px] bg-amber-50 px-3 py-2 text-sm text-amber-900 print:hidden">
                 {invoice.note}
               </p>
+            )}
+            {invoice.creditNotes.length > 0 && (
+              <div className="mt-3 border-t border-stone-100 pt-3">
+                <p className="mb-2 text-xs font-semibold uppercase text-stone-500">Dobropisy</p>
+                <ul className="space-y-1 text-sm">
+                  {invoice.creditNotes.map((creditNote) => (
+                    <li key={creditNote.id} className="flex justify-between gap-3">
+                      <Link href={`/financie/faktury/${creditNote.id}`} className="hover:underline">
+                        {creditNote.invoiceNumber ?? "Koncept dobropisu"}
+                      </Link>
+                      <span className="text-stone-500">{formatCents(creditNote.totalGrossCents)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </section>
 
@@ -130,8 +163,12 @@ export default async function FakturaDetailPage({ params }: { params: Promise<{ 
               <h2 className="mb-3 font-semibold text-stone-900">Akcie</h2>
               <InvoiceWorkflowActions
                 documentStatus={invoice.documentStatus}
+                documentType={invoice.documentType}
+                defaultIssueDate={today}
+                defaultDueDate={in14Days}
                 finalizeAction={finalizeInvoice.bind(null, invoice.id)}
                 cancelAction={cancelInvoice.bind(null, invoice.id)}
+                creditNoteAction={createCreditNoteFromInvoice.bind(null, invoice.id)}
               />
             </section>
           )}
