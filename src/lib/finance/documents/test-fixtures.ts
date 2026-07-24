@@ -1,0 +1,67 @@
+import type { InvoicePdfData } from "./types";
+
+export function createInvoicePdfFixture(
+  overrides: Partial<InvoicePdfData> = {},
+): InvoicePdfData {
+  return {
+    id: "invoice-test-1",
+    invoiceNumber: "2026009",
+    documentType: "INVOICE",
+    issueDate: new Date("2026-07-24T00:00:00.000Z"),
+    dueDate: new Date("2026-08-07T00:00:00.000Z"),
+    finalizedAt: new Date("2026-07-24T12:00:00.000Z"),
+    currency: "EUR",
+    variableSymbol: "2026009",
+    note: "Ďakujeme za vašu objednávku.",
+    issuer: {
+      name: "Zdravý Shot, s. r. o.",
+      ico: "12345678",
+      dic: "2123456789",
+      icDph: "SK2123456789",
+      email: "info@zdravyshot.sk",
+      phone: "+421 900 000 000",
+      street: "Zázvorová 1",
+      city: "Bratislava",
+      zip: "811 01",
+      country: "SK",
+      iban: "SK9611000000002918599669",
+      bic: "TATRSKBX",
+    },
+    counterparty: {
+      name: "Čerstvý odberateľ, s. r. o.",
+      ico: "87654321",
+      dic: "2198765432",
+      email: "odberatel@example.test",
+      street: "Odberateľská 2",
+      city: "Žilina",
+      zip: "010 01",
+      country: "SK",
+    },
+    tax: {
+      vatStatus: "PAYER",
+      vatRegisteredFrom: new Date("2026-07-01T00:00:00.000Z"),
+      domesticTaxMode: "STANDARD",
+      deliveryDate: new Date("2026-07-24T00:00:00.000Z"),
+    },
+    lines: [
+      {
+        lineNumber: 1,
+        productId: "product-test-1",
+        productSku: "ZS-060",
+        description: "Zázvorový shot 60 ml",
+        quantity: 10,
+        unit: "ks",
+        unitPriceCents: 1_000,
+        vatRate: 23,
+        totalNetCents: 10_000,
+        totalVatCents: 2_300,
+        totalGrossCents: 12_300,
+        taxCategory: "STANDARD",
+      },
+    ],
+    totalNetCents: 10_000,
+    totalVatCents: 2_300,
+    totalGrossCents: 12_300,
+    ...overrides,
+  };
+}

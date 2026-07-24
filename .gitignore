@@ -46,6 +46,7 @@ prisma/dev.db-journal
 
 # lokálne produkčné zálohy (citlivé dáta)
 /backups/
+/tmp/
 
 # .env.example commitujeme
 !.env.example
