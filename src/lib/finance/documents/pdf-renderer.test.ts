@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { test, expect } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import { sha256 } from "./hash";
 import { SlovakInvoicePdfRenderer } from "./pdf-renderer";
@@ -12,13 +11,13 @@ test("renderer vytvorí čitateľný a deterministický slovenský PDF doklad", 
   const first = await renderer.render(fixture);
   const second = await renderer.render(fixture);
 
-  assert.equal(new TextDecoder().decode(first.slice(0, 5)), "%PDF-");
-  assert.equal(sha256(first), sha256(second));
+  expect(new TextDecoder().decode(first.slice(0, 5))).toBe("%PDF-");
+  expect(sha256(first)).toBe(sha256(second));
 
   const parsed = await PDFDocument.load(first);
-  assert.equal(parsed.getPageCount(), 1);
-  assert.equal(parsed.getTitle(), "Faktúra 2026009");
-  assert.equal(parsed.getAuthor(), "Zdravý Shot, s. r. o.");
+  expect(parsed.getPageCount()).toBe(1);
+  expect(parsed.getTitle()).toBe("Faktúra 2026009");
+  expect(parsed.getAuthor()).toBe("Zdravý Shot, s. r. o.");
 });
 
 test("renderer zalomí dlhý doklad na viac strán", async () => {
@@ -38,5 +37,5 @@ test("renderer zalomí dlhý doklad na viac strán", async () => {
   });
 
   const parsed = await PDFDocument.load(bytes);
-  assert.ok(parsed.getPageCount() > 1);
+  expect(parsed.getPageCount()).toBeGreaterThan(1);
 });
