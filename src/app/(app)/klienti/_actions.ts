@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { hasFinancePermission } from "@/lib/finance/permissions";
 import { clientSchema } from "@/lib/zod-schemas";
 
 export interface ClientFormState {
@@ -29,7 +30,7 @@ function parseClientForm(formData: FormData) {
   return clientSchema.safeParse(raw);
 }
 
-function toDbData(data: z.infer<typeof clientSchema>) {
+function toDbData(data: z.infer<typeof clientSchema>, includeIban: boolean) {
   return {
     type: data.type,
     name: data.name,
@@ -38,7 +39,7 @@ function toDbData(data: z.infer<typeof clientSchema>) {
     icDph: data.icDph ?? null,
     email: data.email || null,
     phone: data.phone ?? null,
-    iban: data.iban ?? null,
+    ...(includeIban ? { iban: data.iban ?? null } : {}),
     street: data.street ?? null,
     city: data.city ?? null,
     zip: data.zip ?? null,
@@ -51,9 +52,13 @@ export async function createClient(_prevState: ClientFormState, formData: FormDa
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Neplatné údaje." };
   }
-  await requireUser();
+  const user = await requireUser();
+  const canEditFinance = hasFinancePermission(user.role, "CONFIGURE");
+  if (parsed.data.iban && !canEditFinance) {
+    return { error: "IBAN klienta môže meniť iba finančný administrátor." };
+  }
 
-  const client = await prisma.client.create({ data: toDbData(parsed.data) });
+  const client = await prisma.client.create({ data: toDbData(parsed.data, canEditFinance) });
 
   revalidatePath("/klienti");
   redirect(`/klienti/${client.id}`);
@@ -64,12 +69,19 @@ export async function updateClient(clientId: string, _prevState: ClientFormState
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Neplatné údaje." };
   }
-  await requireUser();
+  const user = await requireUser();
+  const canEditFinance = hasFinancePermission(user.role, "CONFIGURE");
+  if (parsed.data.iban && !canEditFinance) {
+    return { error: "IBAN klienta môže meniť iba finančný administrátor." };
+  }
 
   const existing = await prisma.client.findUnique({ where: { id: clientId } });
   if (!existing) return { error: "Klient neexistuje." };
 
-  await prisma.client.update({ where: { id: clientId }, data: toDbData(parsed.data) });
+  await prisma.client.update({
+    where: { id: clientId },
+    data: toDbData(parsed.data, canEditFinance),
+  });
 
   revalidatePath("/klienti");
   revalidatePath(`/klienti/${clientId}`);

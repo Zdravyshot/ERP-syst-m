@@ -43,11 +43,13 @@ export function ClientForm({
   initial,
   submitLabel,
   cancelHref,
+  showFinanceFields = false,
 }: {
   action: (prevState: ClientFormState, formData: FormData) => Promise<ClientFormState>;
   initial?: Partial<ClientFormValues>;
   submitLabel: string;
   cancelHref: string;
+  showFinanceFields?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const values = { ...EMPTY, ...initial };
@@ -97,7 +99,7 @@ export function ClientForm({
         </div>
       </div>
 
-      <div>
+      {showFinanceFields && <div>
         <label htmlFor="iban" className={labelClass}>IBAN odberateľa</label>
         <input
           id="iban"
@@ -110,7 +112,7 @@ export function ClientForm({
         <p className="mt-1 text-xs text-stone-500">
           Používa sa iba ako pomocný údaj pri jednoznačnom párovaní prijatých platieb.
         </p>
-      </div>
+      </div>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <div className="sm:col-span-2">
