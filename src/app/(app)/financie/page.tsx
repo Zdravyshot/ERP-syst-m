@@ -1,13 +1,176 @@
-import { PageHeader, PlaceholderCard } from "@/components/PageHeader";
+import Link from "next/link";
+import { prisma } from "@/lib/prisma";
+import { PageHeader } from "@/components/PageHeader";
+import { formatCents } from "@/lib/format";
+import { btnPrimary, btnSecondary, card, cardHeader, table, thead, tr, td, tdRight, tdRightMuted } from "@/components/ui";
 
-export default function FinanciePage() {
+function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-[14px] border border-stone-200 border-t-[3px] border-t-brand bg-white px-5 py-[18px]">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">{label}</div>
+      <div className="mt-2 whitespace-nowrap font-display text-[22px] font-bold text-stone-950">{value}</div>
+      {hint && <div className="mt-1 text-xs text-stone-400">{hint}</div>}
+    </div>
+  );
+}
+
+export default async function FinanciePage() {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [issuedThisMonth, receivedThisMonth, unpaid, overdue, ekasaThisMonth, products] =
+    await Promise.all([
+      prisma.invoice.aggregate({
+        where: { direction: "VYDANA", status: { not: "STORNO" }, issueDate: { gte: monthStart } },
+        _sum: { totalGrossCents: true },
+        _count: true,
+      }),
+      prisma.invoice.aggregate({
+        where: { direction: "PRIJATA", status: { not: "STORNO" }, issueDate: { gte: monthStart } },
+        _sum: { totalGrossCents: true },
+        _count: true,
+      }),
+      prisma.invoice.aggregate({
+        where: { direction: "VYDANA", status: "VYSTAVENA" },
+        _sum: { totalGrossCents: true },
+        _count: true,
+      }),
+      prisma.invoice.count({
+        where: { direction: "VYDANA", status: "VYSTAVENA", dueDate: { lt: now } },
+      }),
+      prisma.ekasaSale.aggregate({
+        where: { saleDate: { gte: monthStart } },
+        _sum: { totalGrossCents: true },
+      }),
+      prisma.product.findMany({
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        include: { recipe: { include: { items: { include: { material: true } } } } },
+      }),
+    ]);
+
+  const revenueThisMonth =
+    (issuedThisMonth._sum.totalGrossCents ?? 0) + (ekasaThisMonth._sum.totalGrossCents ?? 0);
+
+  // Jednotková ekonomika: náklad surovín na kus podľa receptúry × posledné nákupné ceny
+  const margins = products
+    .filter((p) => p.recipe && p.recipe.items.length > 0)
+    .map((p) => {
+      const recipe = p.recipe!;
+      const costPerBatchCents = recipe.items.reduce(
+        (sum, item) => sum + item.quantity * item.material.lastPriceCents,
+        0,
+      );
+      const costPerUnitCents = Math.round(costPerBatchCents / recipe.batchSize);
+      const marginPct = (priceCents: number) =>
+        priceCents > 0 ? Math.round(((priceCents - costPerUnitCents) / priceCents) * 100) : 0;
+      return {
+        id: p.id,
+        name: p.name,
+        costPerUnitCents,
+        priceB2bCents: p.priceB2bCents,
+        marginB2bPct: marginPct(p.priceB2bCents),
+        priceB2cCents: p.priceB2cCents,
+        marginB2cPct: marginPct(p.priceB2cCents),
+      };
+    });
+
   return (
     <>
-      <PageHeader
-        title="Financie"
-        subtitle="Faktúry (interné + web + SuperFaktúra), eKasa, marže, export"
-      />
-      <PlaceholderCard text="Finančný modul implementuje Dev B (branchy feat/financie, feat/import-export) — viď PLAN.md." />
+      <PageHeader title="Financie" subtitle="Faktúry, eKasa, marže a export pre účtovníka">
+        <a href="/financie/export" className={btnSecondary} download>
+          ⬇ Export CSV
+        </a>
+        <Link href="/financie/faktury" className={btnPrimary}>
+          Faktúry
+        </Link>
+      </PageHeader>
+
+      <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Tržby tento mesiac"
+          value={formatCents(revenueThisMonth)}
+          hint={`${issuedThisMonth._count} faktúr + eKasa`}
+        />
+        <KpiCard
+          label="Neuhradené faktúry"
+          value={formatCents(unpaid._sum.totalGrossCents ?? 0)}
+          hint={`${unpaid._count} vydaných čaká na úhradu`}
+        />
+        <KpiCard
+          label="Po splatnosti"
+          value={String(overdue)}
+          hint={overdue > 0 ? "faktúr treba urgovať" : "všetko v termíne"}
+        />
+        <KpiCard
+          label="Náklady tento mesiac"
+          value={formatCents(receivedThisMonth._sum.totalGrossCents ?? 0)}
+          hint={`${receivedThisMonth._count} prijatých faktúr`}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <div className={card}>
+            <div className={cardHeader}>Marže podľa receptúr (posledné nákupné ceny surovín)</div>
+            <table className={table}>
+              <thead>
+                <tr className={thead}>
+                  <th className="px-[18px] py-2 font-medium">Produkt</th>
+                  <th className="px-[18px] py-2 text-right font-medium">Náklad/ks</th>
+                  <th className="px-[18px] py-2 text-right font-medium">Cena B2B</th>
+                  <th className="px-[18px] py-2 text-right font-medium">Marža B2B</th>
+                  <th className="px-[18px] py-2 text-right font-medium">Cena B2C</th>
+                  <th className="px-[18px] py-2 text-right font-medium">Marža B2C</th>
+                </tr>
+              </thead>
+              <tbody>
+                {margins.map((m) => (
+                  <tr key={m.id} className={tr}>
+                    <td className={`${td} font-medium`}>{m.name}</td>
+                    <td className={tdRightMuted}>{formatCents(m.costPerUnitCents)}</td>
+                    <td className={tdRight}>{formatCents(m.priceB2bCents)}</td>
+                    <td className={`px-[18px] py-[9px] text-right font-semibold tabular-nums ${m.marginB2bPct < 30 ? "text-red-600" : "text-[#1F7A0F]"}`}>
+                      {m.marginB2bPct} %
+                    </td>
+                    <td className={tdRight}>{formatCents(m.priceB2cCents)}</td>
+                    <td className={`px-[18px] py-[9px] text-right font-semibold tabular-nums ${m.marginB2cPct < 30 ? "text-red-600" : "text-[#1F7A0F]"}`}>
+                      {m.marginB2cPct} %
+                    </td>
+                  </tr>
+                ))}
+                {margins.length === 0 && (
+                  <tr className={tr}>
+                    <td colSpan={6} className="px-[18px] py-8 text-center text-stone-400">
+                      Žiadne produkty s receptúrou — marže sa počítajú z receptúr a nákupných cien
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <p className="border-t border-stone-100 px-[18px] py-2.5 text-xs text-stone-400">
+              Náklad zahŕňa suroviny a obaly podľa receptúry; nezahŕňa prácu, energie a réžiu.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {[
+            { href: "/financie/faktury", title: "Faktúry", desc: "Jednotná evidencia — interné, web, SuperFaktúra. Vystavovanie, stavy, tlač." },
+            { href: "/financie/import", title: "Import zo SuperFaktúry", desc: "CSV upload s náhľadom, idempotentný — bez duplikátov." },
+            { href: "/financie/ekasa", title: "eKasa", desc: "Import hotovostných predajov z pokladne, deduplikácia dokladov." },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="block rounded-[14px] border border-stone-200 bg-white p-5 transition hover:border-stone-300 hover:bg-stone-50"
+            >
+              <div className="text-[13.5px] font-semibold text-stone-950">{item.title} →</div>
+              <p className="mt-1 text-sm text-stone-500">{item.desc}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
     </>
   );
 }

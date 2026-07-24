@@ -6,7 +6,7 @@ Interný ERP pre Zdravý shot. Na projekte pracujú **dvaja ľudia paralelne, ka
 
 - [x] **Fáza 0 — spoločný základ** (hotová, je v `main`): scaffold Next.js 16 + Prisma 6 (SQLite) + kompletná schéma + migrácia + seed, iron-session auth, layout so slovenským sidebarom, placeholder stránky všetkých modulov, `POST /api/inbox`, `GET /api/konkurencia` stub, zdieľané helpery v `src/lib/`
 - [x] **Dev A — Prevádzka** (hotová, je v `main`): Sklad (stavy z ledgeru, pohyby, príjem/výdaj), Výroba (receptúry, šarže, transakčné dokončenie s odpisom surovín), Plnenie plánu (ciele vs. live skutočnosť), Dashboard (živé KPI)
-- [ ] Dev B — Obchod a financie (viď nižšie)
+- [x] **Dev B — Obchod a financie** (hotová, je v `main`): Klienti + Objednávky + Predplatné + Inbox (Dev B), Financie — faktúry (vystavenie z objednávky, ručné, stavy, tlač), SuperFaktúra CSV import, eKasa import, CSV export pre účtovníka, marže (dokončil Dev A vo feat/financie)
 
 ## Moduly a vstupy
 

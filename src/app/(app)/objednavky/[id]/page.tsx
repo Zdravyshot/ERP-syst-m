@@ -8,7 +8,9 @@ import { computeTotals, INVOICE_STATUS_LABELS } from "@/lib/invoicing";
 import { orderStatusLabels, orderChannelLabels } from "@/lib/zod-schemas";
 import { ORDER_STATUS_TRANSITIONS, EDITABLE_ORDER_STATUSES, SUBSCRIPTION_FREQUENCY_LABELS } from "../konstanty";
 import { setOrderStatus } from "../_actions";
+import { issueInvoiceFromOrder } from "../../financie/_actions";
 import { StatusActions } from "./StatusActions";
+import { IssueInvoiceButton } from "./IssueInvoiceButton";
 
 export default async function ObjednavkaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -106,14 +108,22 @@ export default async function ObjednavkaDetailPage({ params }: { params: Promise
           </section>
 
           <section className="rounded-[14px] border border-stone-200 bg-white p-5">
-            <h2 className="mb-3 font-semibold text-stone-900">Faktúry</h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="font-semibold text-stone-900">Faktúry</h2>
+              {order.status !== "ZRUSENA" &&
+                !order.invoices.some((i) => i.direction === "VYDANA" && i.status !== "STORNO") && (
+                  <IssueInvoiceButton action={issueInvoiceFromOrder.bind(null, order.id)} />
+                )}
+            </div>
             {order.invoices.length === 0 ? (
               <p className="text-sm text-stone-400">Zatiaľ žiadna faktúra.</p>
             ) : (
               <ul className="space-y-2">
                 {order.invoices.map((invoice) => (
                   <li key={invoice.id} className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-stone-900">{invoice.invoiceNumber}</span>
+                    <Link href={`/financie/faktury/${invoice.id}`} className="font-medium text-stone-900 hover:underline">
+                      {invoice.invoiceNumber}
+                    </Link>
                     <span className="flex items-center gap-2">
                       <span className="text-stone-600">{formatCents(invoice.totalGrossCents)}</span>
                       <Badge color={INVOICE_STATUS_COLORS[invoice.status]}>
