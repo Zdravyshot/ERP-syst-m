@@ -20,7 +20,7 @@ interface Line {
   vatRate: string;
 }
 
-const EMPTY_LINE: Line = { description: "", quantity: "1", unit: "ks", vatRate: "20", unitPrice: "" };
+const EMPTY_LINE: Line = { description: "", quantity: "1", unit: "ks", vatRate: "0", unitPrice: "" };
 
 function parseQty(value: string): number {
   const parsed = Number.parseFloat(value.replace(/\s/g, "").replace(",", "."));
@@ -136,6 +136,10 @@ export function InvoiceForm({ clients }: { clients: ClientOption[] }) {
             <input name="dueDate" type="date" defaultValue={in14days} required className={input} />
           </div>
           <div>
+            <label className={label}>Dátum dodania</label>
+            <input name="deliveryDate" type="date" defaultValue={today} required className={input} />
+          </div>
+          <div>
             <label className={label}>
               Variabilný symbol <span className="font-normal text-stone-400">(inak auto)</span>
             </label>
@@ -204,8 +208,9 @@ export function InvoiceForm({ clients }: { clients: ClientOption[] }) {
                   onChange={(e) => updateLine(index, { vatRate: e.target.value })}
                   className={input}
                 >
-                  <option value="20">20 %</option>
-                  <option value="10">10 %</option>
+                  <option value="23">23 %</option>
+                  <option value="19">19 %</option>
+                  <option value="5">5 %</option>
                   <option value="0">0 %</option>
                 </select>
               </div>
@@ -248,7 +253,7 @@ export function InvoiceForm({ clients }: { clients: ClientOption[] }) {
       {state.error && <p className={errorBox}>{state.error}</p>}
 
       <button type="submit" disabled={pending} className={btnPrimary}>
-        {pending ? "Ukladám…" : "Vystaviť faktúru"}
+        {pending ? "Ukladám…" : "Uložiť koncept"}
       </button>
     </form>
   );

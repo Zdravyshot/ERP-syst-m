@@ -22,6 +22,7 @@ export default async function UpravitKlientaPage({ params }: { params: Promise<{
           icDph: client.icDph ?? "",
           email: client.email ?? "",
           phone: client.phone ?? "",
+          iban: client.iban ?? "",
           street: client.street ?? "",
           city: client.city ?? "",
           zip: client.zip ?? "",

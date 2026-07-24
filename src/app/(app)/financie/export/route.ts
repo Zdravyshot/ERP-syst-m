@@ -1,102 +1,57 @@
 import { type NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { invoiceService } from "@/lib/finance/invoice-service";
+import { hasFinancePermission } from "@/lib/finance/permissions";
 
-function csvField(value: string | null | undefined): string {
-  const s = value ?? "";
-  return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+function parseDate(value: string | null, endOfDay = false): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(endOfDay ? `${value}T23:59:59.999` : `${value}T00:00:00.000`);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function formatDateSk(date: Date | null | undefined): string {
-  if (!date) return "";
-  return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
-}
-
-function eur(cents: number): string {
-  return (cents / 100).toFixed(2).replace(".", ",");
-}
-
-/**
- * CSV export faktúr pre účtovníka.
- * GET /financie/export?od=2026-07-01&do=2026-07-31&smer=VYDANA&zdroj=SUPERFAKTURA
- * Oddeľovač ; (slovenský Excel), UTF-8 s BOM.
- */
+/** CSV export finalizovaných faktúr pre účtovníka. */
 export async function GET(request: NextRequest) {
   const session = await getSession();
-  if (!session.userId) {
-    return new Response("Neprihlásený", { status: 401 });
+  if (!session.userId) return new Response("Neprihlásený", { status: 401 });
+  if (!hasFinancePermission(session.role, "EXPORT")) {
+    return new Response("Na export financií nemáte oprávnenie.", { status: 403 });
   }
 
   const params = request.nextUrl.searchParams;
-  const od = params.get("od");
-  const doDate = params.get("do");
-  const smer = params.get("smer");
-  const zdroj = params.get("zdroj");
-
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      ...(smer === "VYDANA" || smer === "PRIJATA" ? { direction: smer } : {}),
-      ...(zdroj === "INTERNA" || zdroj === "WEB" || zdroj === "SUPERFAKTURA" ? { source: zdroj } : {}),
-      ...(od || doDate
-        ? {
-            issueDate: {
-              ...(od ? { gte: new Date(od) } : {}),
-              ...(doDate ? { lte: new Date(`${doDate}T23:59:59`) } : {}),
-            },
-          }
-        : {}),
-    },
-    include: { client: true },
-    orderBy: [{ issueDate: "asc" }, { invoiceNumber: "asc" }],
+  const direction = params.get("smer");
+  const source = params.get("zdroj");
+  const exported = await invoiceService.exportAccounting({
+    ...(direction === "VYDANA" || direction === "PRIJATA" ? { direction } : {}),
+    ...(source === "INTERNA" || source === "WEB" || source === "SUPERFAKTURA" || source === "OMEGA"
+      ? { source }
+      : {}),
+    dateFrom: parseDate(params.get("od")),
+    dateTo: parseDate(params.get("do"), true),
+    includeCancelled: params.get("stornovane") === "1",
   });
 
-  const header = [
-    "Interné číslo",
-    "Externé číslo",
-    "Zdroj",
-    "Smer",
-    "Klient/Dodávateľ",
-    "IČO",
-    "DIČ",
-    "IČ DPH",
-    "Dátum vystavenia",
-    "Dátum splatnosti",
-    "Dátum dodania",
-    "Základ",
-    "DPH",
-    "Spolu",
-    "VS",
-    "Stav",
-  ].join(";");
+  await prisma.auditLog.create({
+    data: {
+      actorId: session.userId,
+      actorEmail: session.email,
+      action: "ACCOUNTING_EXPORT_DOWNLOADED",
+      entityType: "AccountingExport",
+      entityId: exported.sha256,
+      metadata: {
+        invoiceCount: exported.invoiceCount,
+        totalGrossCents: exported.totalGrossCents,
+        filters: Object.fromEntries(params.entries()),
+      },
+    },
+  });
 
-  const lines = invoices.map((inv) =>
-    [
-      csvField(inv.invoiceNumber),
-      csvField(inv.externalNumber),
-      csvField(inv.source),
-      csvField(inv.direction === "VYDANA" ? "Vydaná" : "Prijatá"),
-      csvField(inv.client?.name ?? inv.supplierName),
-      csvField(inv.client?.ico),
-      csvField(inv.client?.dic),
-      csvField(inv.client?.icDph),
-      formatDateSk(inv.issueDate),
-      formatDateSk(inv.dueDate),
-      formatDateSk(inv.deliveryDate),
-      eur(inv.totalNetCents),
-      eur(inv.totalVatCents),
-      eur(inv.totalGrossCents),
-      csvField(inv.variableSymbol),
-      csvField(inv.status),
-    ].join(";"),
-  );
-
-  const csv = "﻿" + [header, ...lines].join("\r\n");
-  const today = new Date().toISOString().slice(0, 10);
-
-  return new Response(csv, {
+  return new Response(Buffer.from(exported.content), {
     headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="faktury-${today}.csv"`,
+      "Content-Type": exported.contentType,
+      "Content-Disposition": `attachment; filename="${exported.fileName}"`,
+      "X-Content-SHA256": exported.sha256,
+      "Cache-Control": "private, no-store",
     },
   });
 }

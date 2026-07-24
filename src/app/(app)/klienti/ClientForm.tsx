@@ -12,6 +12,7 @@ export interface ClientFormValues {
   icDph: string;
   email: string;
   phone: string;
+  iban: string;
   street: string;
   city: string;
   zip: string;
@@ -26,6 +27,7 @@ const EMPTY: ClientFormValues = {
   icDph: "",
   email: "",
   phone: "",
+  iban: "",
   street: "",
   city: "",
   zip: "",
@@ -93,6 +95,21 @@ export function ClientForm({
           <label htmlFor="phone" className={labelClass}>Telefón</label>
           <input id="phone" name="phone" defaultValue={values.phone} className={inputClass} placeholder="+421 9xx xxx xxx" />
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="iban" className={labelClass}>IBAN odberateľa</label>
+        <input
+          id="iban"
+          name="iban"
+          defaultValue={values.iban}
+          className={inputClass}
+          placeholder="SK00 0000 0000 0000 0000 0000"
+          autoComplete="off"
+        />
+        <p className="mt-1 text-xs text-stone-500">
+          Používa sa iba ako pomocný údaj pri jednoznačnom párovaní prijatých platieb.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">

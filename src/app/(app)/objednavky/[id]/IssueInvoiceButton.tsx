@@ -14,7 +14,7 @@ export function IssueInvoiceButton({
   return (
     <form action={formAction}>
       <button type="submit" disabled={pending} className={btnSmallPrimary}>
-        {pending ? "Vystavujem…" : "Vystaviť faktúru"}
+        {pending ? "Vytváram…" : "Vytvoriť koncept faktúry"}
       </button>
       {state.error && <p className="mt-2 text-xs text-red-600">{state.error}</p>}
     </form>
