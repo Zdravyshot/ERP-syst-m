@@ -157,6 +157,8 @@ export default async function FinanciePage() {
         <div className="space-y-4">
           {[
             { href: "/financie/faktury", title: "Faktúry", desc: "Jednotná evidencia — interné, web, SuperFaktúra. Vystavovanie, stavy, tlač." },
+            { href: "/financie/banka", title: "Banka", desc: "Tatra Premium API / import výpisov, transakcie a automatické párovanie platieb." },
+            { href: "/financie/cashflow", title: "Cash-flow", desc: "Mesačné toky z platieb, aging neuhradených faktúr a očakávané výdavky." },
             { href: "/financie/import", title: "Import zo SuperFaktúry", desc: "CSV upload s náhľadom, idempotentný — bez duplikátov." },
             { href: "/financie/ekasa", title: "eKasa", desc: "Import hotovostných predajov z pokladne, deduplikácia dokladov." },
           ].map((item) => (

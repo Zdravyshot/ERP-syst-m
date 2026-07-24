@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "db:deploy": "prisma migrate deploy",
     "backup:production": "sh scripts/backup-production.sh",
-    "admin:production": "sh scripts/create-production-admin.sh"
+    "admin:production": "sh scripts/create-production-admin.sh",
+    "test": "vitest run"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -30,7 +31,8 @@
     "@types/react-dom": "^19",
     "tailwindcss": "^4",
     "tsx": "^4.23.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
