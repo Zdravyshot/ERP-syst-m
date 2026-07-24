@@ -106,6 +106,25 @@ export function calculatePaymentStatus(totalGrossCents: number, allocatedCents: 
   return "OVERPAID";
 }
 
+export function assertCreditWithinOriginal(
+  originalGrossCents: number,
+  alreadyCreditedGrossCents: number,
+  requestedGrossCents: number,
+): void {
+  assertSafeCents(originalGrossCents, "Suma pôvodnej faktúry");
+  assertSafeCents(alreadyCreditedGrossCents, "Už dobropisovaná suma");
+  assertSafeCents(requestedGrossCents, "Požadovaná suma dobropisu");
+  if (originalGrossCents < 0 || alreadyCreditedGrossCents < 0 || requestedGrossCents <= 0) {
+    throw new FinanceDomainError("INVALID_MONEY", "Sumy dobropisu musia byť kladné.");
+  }
+  if (alreadyCreditedGrossCents + requestedGrossCents > originalGrossCents) {
+    throw new FinanceDomainError(
+      "INVALID_MONEY",
+      "Súčet dobropisov nesmie prekročiť sumu pôvodnej faktúry.",
+    );
+  }
+}
+
 const DOCUMENT_TRANSITIONS: Record<InvoiceDocumentStatus, readonly InvoiceDocumentStatus[]> = {
   DRAFT: ["ISSUED", "CANCELLED"],
   ISSUED: ["CANCELLED"],
